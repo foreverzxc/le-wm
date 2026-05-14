@@ -39,7 +39,8 @@ class JEPA(nn.Module):
         output = self.encoder(pixels, interpolate_pos_encoding=True)
         pixels_emb = output.last_hidden_state[:, 0]  # cls token
         emb = self.projector(pixels_emb)
-        emb = self.whitening(emb)
+        whitening = getattr(self, "whitening", nn.Identity())
+        emb = whitening(emb)
         info["emb"] = rearrange(emb, "(b t) d -> b t d", b=b)
 
         if "action" in info:

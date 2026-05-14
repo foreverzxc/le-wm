@@ -1,0 +1,34 @@
+Loading models...
+
+=== Model A: Pre-trained (SIGReg) ===
+15:20:25.073 | INFO    (115923, stable_pretraining) | Cached 'action' from '/home/cyborg/.stable_worldmodel/pusht_expert_train.h5'
+  Collected 1600 embeddings, dim=192
+
+=== Model B: Whitening Fine-tuned ===
+15:20:39.198 | INFO    (115923, stable_pretraining) | Cached 'action' from '/home/cyborg/.stable_worldmodel/pusht_expert_train.h5'
+  Collected 1600 embeddings, dim=192
+
+================================================================================
+  TEST 1: EMBEDDING ISOTROPY
+================================================================================
+  [     Pre-trained enc] cond#=      7136.7  eff_dim=  84.2/192  K@90= 77  K@95= 86  |r|_mean=0.0655  |r|_max=0.3501
+  [       Whitening enc] cond#=   3232546.0  eff_dim=  15.4/192  K@90= 27  K@95= 37  |r|_mean=0.1864  |r|_max=0.7554
+
+================================================================================
+  TEST 2: PREDICTION ERROR
+================================================================================
+  Pre-trained  pred MSE: 0.007640
+  Whitening    pred MSE: 0.000083
+  Improvement:           92.0x lower
+
+================================================================================
+  TEST 3: PREDICTION RESIDUAL ISOTROPY
+================================================================================
+  [     Pre-trained res] cond#=       156.7  eff_dim=  81.6/192  K@90= 83  K@95= 99  |r|_mean=0.0668  |r|_max=0.3390
+  [       Whitening res] cond#=       789.2  eff_dim=  31.8/192  K@90= 77  K@95=107  |r|_mean=0.1236  |r|_max=0.5686
+
+================================================================================
+  TEST 4: PER-DIMENSION MSE
+================================================================================
+  Pre-trained:  mean=0.007640  std=0.000953  min=0.005118  max=0.010721
+  Whitening:    mean=0.000083  std=0.000088  min=0.000014  max=0.000535
