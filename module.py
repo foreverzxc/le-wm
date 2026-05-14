@@ -42,13 +42,17 @@ class WhiteningLayer(torch.nn.Module):
     保证输出满足 E[z]=0, Cov[z]=I。
     训练时使用 batch 统计量，推理时使用 running 统计量。
     特征值被 clamp 到底限 eps 以保证数值稳定性，支持 B*T < D 的欠定情形。
+
+    当 frozen=True 时，始终使用 running 统计量（不更新，不依赖 batch 统计量）。
+    用于"预计算全局白化统计量→固定→微调"的场景。
     """
 
-    def __init__(self, dim: int, momentum: float = 0.9, eps: float = 1e-4):
+    def __init__(self, dim: int, momentum: float = 0.9, eps: float = 1e-4, frozen: bool = False):
         super().__init__()
         self.dim = dim
         self.momentum = momentum
         self.eps = eps
+        self.frozen = frozen
 
         self.register_buffer("running_mean", torch.zeros(dim))
         self.register_buffer("running_cov", torch.eye(dim))
@@ -68,11 +72,15 @@ class WhiteningLayer(torch.nn.Module):
         whitened = centered @ transform @ eigvecs.T
         return whitened.to(orig_dtype)
 
+    def eval(self):
+        self.frozen = True
+        return super().eval()
+
     def forward(self, x):
         shape = x.shape
         x_flat = x.reshape(-1, self.dim)
 
-        if self.training:
+        if self.training and not self.frozen:
             mean = x_flat.mean(0, keepdim=True)
             centered = x_flat - mean
             cov = (centered.T @ centered) / (centered.size(0) - 1)
