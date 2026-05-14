@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WhiteningLayer — 数学原理与实现</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #242836;
+    --border: #2e3348; --text: #e4e6f0; --text2: #9ca0b8;
+    --accent: #6c8cff; --green: #51cf66; --orange: #ff922b; --red: #ff6b6b;
+    --purple: #cc5de8; --cyan: #22b8cf;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.7; font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+
+  .header { text-align: center; padding: 40px 0 32px; border-bottom: 1px solid var(--border); margin-bottom: 40px; }
+  .header h1 { font-size: 2em; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .header .subtitle { color: var(--text2); margin-top: 8px; font-size: 1.05em; }
+
+  .section { margin-bottom: 40px; }
+  .section-title { font-size: 1.25em; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  .section-title .icon { width: 28px; height: 28px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; font-size: 14px; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+  .card p { margin-bottom: 8px; }
+  .card p:last-child { margin-bottom: 0; }
+
+  .math-block {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 20px; margin: 12px 0; overflow-x: auto; font-size: 1.05em; text-align: center;
+    font-family: 'Times New Roman', serif; letter-spacing: 0.5px;
+  }
+  .math-block .label { display: block; color: var(--text2); font-size: 0.75em; font-family: 'Inter', sans-serif; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .math-block .highlight { color: var(--accent); }
+  .math-block .highlight2 { color: var(--green); }
+  .math-block .highlight3 { color: var(--orange); }
+
+  .code {
+    background: #0d1117; border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 0.88em;
+    overflow-x: auto; line-height: 1.5; margin: 12px 0;
+  }
+  .code .kw { color: #ff7b72; }
+  .code .fn { color: #d2a8ff; }
+  .code .str { color: #a5d6ff; }
+  .code .cm { color: #8b949e; font-style: italic; }
+  .code .num { color: #79c0ff; }
+  .code .op { color: #ffa657; }
+
+  .flow-diagram {
+    display: flex; align-items: center; justify-content: center;
+    gap: 12px; padding: 24px; flex-wrap: wrap;
+  }
+  .flow-box {
+    background: var(--surface2); border: 2px solid var(--border); border-radius: 10px;
+    padding: 14px 20px; text-align: center; min-width: 100px;
+  }
+  .flow-box .title { font-size: 0.75em; color: var(--text2); margin-bottom: 4px; }
+  .flow-box .value { font-weight: 600; font-size: 0.95em; }
+  .flow-arrow { color: var(--text2); font-size: 1.3em; }
+
+  .mode-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
+  .mode-table th, .mode-table td { padding: 10px 14px; text-align: left; border: 1px solid var(--border); }
+  .mode-table th { background: var(--surface2); color: var(--text2); font-weight: 600; font-size: 0.88em; }
+  .mode-table td { font-size: 0.92em; }
+
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
+  .tag-green { background: rgba(81,207,102,0.15); color: var(--green); }
+  .tag-orange { background: rgba(255,146,43,0.15); color: var(--orange); }
+  .tag-red { background: rgba(255,107,107,0.15); color: var(--red); }
+  .tag-cyan { background: rgba(34,184,207,0.15); color: var(--cyan); }
+  .tag-purple { background: rgba(204,93,232,0.15); color: var(--purple); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 700px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .highlight-box { background: rgba(108,140,255,0.08); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 14px 18px; margin: 12px 0; }
+
+  .footer { text-align: center; color: var(--text2); font-size: 0.85em; padding: 32px 0 16px; border-top: 1px solid var(--border); margin-top: 32px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="header">
+  <h1>WhiteningLayer</h1>
+  <div class="subtitle">可微分白化层 · 数学原理与 PyTorch 实现</div>
+</div>
+
+<!-- ═══════════════════ 1. WHAT & WHY ═══════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="icon" style="background:rgba(108,140,255,0.15);color:var(--accent);">?</span> 它是什么？为什么需要它？</div>
+  <div class="card">
+    <p>在 JEPA（Joint-Embedding Predictive Architecture）中，encoder 输出的隐变量 <strong>z</strong> 需要同时满足两个矛盾的要求：</p>
+    <ul style="margin: 8px 0 8px 20px; color: var(--text2);">
+      <li><strong class="highlight">可预测</strong>：predictor 能准确预测下一帧的 z → MSE 损失小</li>
+      <li><strong class="highlight2">不坍缩</strong>：不同输入的 z 必须不同，不能都变成常数</li>
+    </ul>
+    <p>原版 LeWM 用 <strong>SIGReg</strong> 来防止坍缩——它是一个统计检验损失，迫使 z 的分布接近各向同性高斯。但这是一个"事后惩罚"：先做，不符合就罚。</p>
+    <p><strong>WhiteningLayer</strong> 则是一个<strong>架构层面的约束</strong>——在 encoder 输出后接一个可微分线性变换，<strong>数学上保证</strong>输出的协方差矩阵 = I。不需要任何损失项，防坍缩是天然的（因为坍缩会导致除以零而 NaN）。</p>
+  </div>
+</div>
+
+<!-- ═══════════════════ 2. MATH ═══════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="icon" style="background:rgba(204,93,232,0.15);color:var(--purple);">Σ</span> 数学原理</div>
+
+  <div class="card">
+    <p style="margin-bottom:12px;">给定一批 encoder 输出的原始 embedding <strong class="highlight">h<sub>1</sub>, ..., h<sub>N</sub> ∈ ℝ<sup>D</sup></strong>，白化层计算：</p>
+
+    <div class="math-block">
+      <span class="label">Step 1: 去均值</span>
+      <strong>h<sub>c</sub></strong> = <strong>h</strong> − μ &nbsp; &nbsp; 其中 μ = <span style="font-size:0.9em;">1/N</span> Σ<sub>i</sub> <strong>h<sub>i</sub></strong>
+    </div>
+
+    <div class="math-block">
+      <span class="label">Step 2: 计算协方差矩阵</span>
+      <strong>Σ</strong> = <span style="font-size:0.9em;">1/(N−1)</span> <strong>H<sub>c</sub><sup>T</sup> H<sub>c</sub></strong> &nbsp; ∈ ℝ<sup>D×D</sup>
+    </div>
+
+    <div class="math-block">
+      <span class="label">Step 3: 对称特征分解</span>
+      <strong>Σ</strong> = <strong class="highlight2">V</strong> <strong class="highlight3">Λ</strong> <strong class="highlight2">V<sup>T</sup></strong> &nbsp; &nbsp; 其中
+      <strong class="highlight2">V</strong> = 特征向量（正交矩阵，VV<sup>T</sup>=I），
+      <strong class="highlight3">Λ</strong> = diag(λ<sub>1</sub>, ..., λ<sub>D</sub>)
+    </div>
+
+    <div class="math-block">
+      <span class="label">Step 4: 白化变换</span>
+      <strong class="highlight2">z</strong> = <strong>h<sub>c</sub></strong> · <strong class="highlight2">V</strong> · <span style="font-size:0.9em;">diag(</span>1/√λ<sub>i</sub><span style="font-size:0.9em;">)</span> · <strong class="highlight2">V<sup>T</sup></strong>
+    </div>
+
+    <div class="highlight-box">
+      <strong>验证输出性质</strong>：
+      <span style="color: var(--text2);">可以证明</span> <strong>Cov[z] = V · Λ<sup>−1/2</sup> · V<sup>T</sup> · Σ · V · Λ<sup>−1/2</sup> · V<sup>T</sup> = I</strong>
+      <br><span style="color: var(--text2); font-size: 0.92em;">即输出 z 的协方差矩阵是单位矩阵，任意两维不相关且方差为 1。</span>
+    </div>
+  </div>
+
+  <!-- Geometric interpretation -->
+  <div class="card">
+    <div style="font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+      <span class="tag tag-purple">几何直观</span>
+      白化变换的三个步骤
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; align-items: flex-start; gap: 12px;">
+        <span style="background: var(--surface2); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.85em; font-weight: 600; color: var(--accent);">1</span>
+        <div><strong>平移</strong>：减去均值 μ，把数据中心移到原点</div>
+      </div>
+      <div style="display: flex; align-items: flex-start; gap: 12px;">
+        <span style="background: var(--surface2); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.85em; font-weight: 600; color: var(--green);">2</span>
+        <div><strong>旋转</strong>：V<sup>T</sup> 把坐标系旋转到主成分（特征向量）方向。此时数据在其各维度上不相关。</div>
+      </div>
+      <div style="display: flex; align-items: flex-start; gap: 12px;">
+        <span style="background: var(--surface2); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.85em; font-weight: 600; color: var(--orange);">3</span>
+        <div><strong>缩放</strong>：Λ<sup>−1/2</sup> 把每个主成分方向的方差缩放到 1（除以标准差）。然后 V 旋转回原始坐标。</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ 3. CODE ═══════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="icon" style="background:rgba(81,207,102,0.15);color:var(--green);">&lt;/&gt;</span> 代码实现（module.py）</div>
+
+  <div class="grid-2">
+    <div>
+      <div class="card" style="height: 100%;">
+        <div style="font-weight: 600; margin-bottom: 8px;">初始化</div>
+        <div class="code">
+<span class="cm"># running_mean: initial 0</span>
+<span class="cm"># running_cov:  initial I</span>
+self.<span class="fn">register_buffer</span>(<span class="str">"running_mean"</span>, torch.zeros(dim))
+self.<span class="fn">register_buffer</span>(<span class="str">"running_cov"</span>, torch.eye(dim))
+        </div>
+        <p style="font-size: 0.88em; color: var(--text2); margin-top: 8px;">
+          μ 和 Σ 存为 buffer（不是 parameter），不参与梯度计算。
+          初始化 running_cov = I → 训练开始前白化层等价于恒等映射。
+        </p>
+      </div>
+    </div>
+    <div>
+      <div class="card" style="height: 100%;">
+        <div style="font-weight: 600; margin-bottom: 8px;"><code>_whiten(x, mean, cov, eps)</code></div>
+        <div class="code">
+centered = x_f32 - mean_f32
+eigvals, eigvecs = <span class="fn">torch.linalg.eigh</span>(cov)
+eigvals = eigvals.<span class="fn">clamp</span>(min=eps)
+transform = eigvecs * eigvals.<span class="fn">rsqrt</span>().<span class="fn">unsqueeze</span>(<span class="num">0</span>)
+whitened = centered @ transform @ eigvecs.T
+        </div>
+        <p style="font-size: 0.88em; color: var(--text2); margin-top: 8px;">
+          用 <strong>eigh</strong>（对称矩阵特征分解）代替 Cholesky，更稳定。<br>
+          支持 B·T &lt; D 的低秩情形（clamp 防止除零）。
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight: 600; margin-bottom: 8px;">Forward 逻辑：两种模式</div>
+    <div class="code">
+<span class="kw">def</span> <span class="fn">forward</span>(self, x):
+    <span class="kw">if</span> self.training <span class="kw">and not</span> self.frozen:
+        <span class="cm"># 训练态 unfrozen: 用 batch 统计量白化 + 更新 running 统计量</span>
+        mean = x.mean(<span class="num">0</span>, keepdim=<span class="kw">True</span>)
+        cov = (centered.T @ centered) / (N - <span class="num">1</span>)
+        self.running_mean = momentum * self.running_mean + (<span class="num">1</span>-momentum) * mean
+        self.running_cov = momentum * self.running_cov + (<span class="num">1</span>-momentum) * cov
+        <span class="kw">return</span> self._whiten(x, mean, cov, eps)
+    <span class="kw">else</span>:
+        <span class="cm"># 推理态 / frozen: 用 running 统计量（永不更新）</span>
+        <span class="kw">return</span> self._whiten(x, self.running_mean, self.running_cov, eps)
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ 4. TWO MODES ═══════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="icon" style="background:rgba(255,146,43,0.15);color:var(--orange);">⚡</span> 两种模式对比</div>
+
+  <table class="mode-table">
+    <tr>
+      <th></th>
+      <th><span class="tag tag-cyan">Unfrozen</span>（默认训练态）</th>
+      <th><span class="tag tag-red">Frozen</span>（冻结）</th>
+    </tr>
+    <tr>
+      <td style="font-weight:600;">统计量来源</td>
+      <td>当前 batch 的 μ, Σ</td>
+      <td>预计算的 μ, Σ（不更新）</td>
+    </tr>
+    <tr>
+      <td style="font-weight:600;">统计量更新</td>
+      <td>每步更新 running_mean/cov</td>
+      <td>永不更新</td>
+    </tr>
+    <tr>
+      <td style="font-weight:600;">白化变换</td>
+      <td>每步不同（batch 变 → 变换变）</td>
+      <td>恒定不变</td>
+    </tr>
+    <tr>
+      <td style="font-weight:600;">适用场景</td>
+      <td>从零训练（encoder 也在变化）</td>
+      <td>预训练模型 + 微调（固定白化空间）</td>
+    </tr>
+    <tr>
+      <td style="font-weight:600;">稳定性</td>
+      <td><span class="tag tag-orange">不稳定</span> batch 间波动 → 预测器目标准移</td>
+      <td><span class="tag tag-green">稳定</span> 目标空间恒定</td>
+    </tr>
+    <tr>
+      <td style="font-weight:600;">各向同性</td>
+      <td><span class="tag tag-orange">退化</span> encoder 漂移后过时</td>
+      <td><span class="tag tag-green">保持</span> 统计量始终有效</td>
+    </tr>
+  </table>
+
+  <div class="highlight-box">
+    <strong>frozen 模式的触发条件</strong>：<code>self.training and not self.frozen</code><br>
+    调用 <code>model.eval()</code> 时 <code>frozen=True</code>。<br>
+    即使在 <code>model.train()</code> 下，只要 <code>frozen=True</code>（在<code>__init__</code>中设置），就始终使用 running 统计量。
+    这使我们可以"预计算统计量 → 冻结 → 放进训练循环，白化变换不动"。
+  </div>
+</div>
+
+<!-- ═══════════════════ 5. FLOW ═══════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="icon" style="background:rgba(34,184,207,0.15);color:var(--cyan);">↻</span> 数据流</div>
+
+  <div class="card">
+    <div class="flow-diagram">
+      <div class="flow-box">
+        <div class="title">Encoder</div>
+        <div class="value">ViT</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box">
+        <div class="title">Projector</div>
+        <div class="value">MLP+BN</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box" style="border-color: var(--accent); background: rgba(108,140,255,0.08);">
+        <div class="title" style="color:var(--accent);">WhiteningLayer</div>
+        <div class="value">z = Σ<sup>−½</sup>(h−μ)</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-box" style="border-color: var(--green);">
+        <div class="title" style="color:var(--green);">Predictor</div>
+        <div class="value">预测 ẑ<sub>t+1</sub></div>
+      </div>
+    </div>
+
+    <div style="margin-top: 16px; padding: 14px; background: var(--surface2); border-radius: 8px;">
+      <div style="font-size: 0.92em; margin-bottom: 8px; font-weight: 600;">H = 3 步历史，MSE 损失：</div>
+      <div style="font-size: 0.88em; color: var(--text2); line-height: 1.6;">
+        <span style="color: var(--accent);">z<sub>t−2</sub>, z<sub>t−1</sub>, z<sub>t</sub></span> → Predictor → <span style="color: var(--green);">ẑ<sub>t+1</sub></span><br>
+        <span style="color: var(--orange);">L = ||ẑ<sub>t+1</sub> − z<sub>t+1</sub>||²</span> &nbsp;（无 SIGReg，仅有 MSE）
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ 6. EXPERIMENT RESULTS ═══════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="icon" style="background:rgba(81,207,102,0.15);color:var(--green);">📊</span> 实验结果</div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div style="font-weight: 600; margin-bottom: 10px;">开环预测 MSE（10步）</div>
+      <table class="mode-table" style="font-size:0.85em;">
+        <tr><th>模型</th><th>MSE</th><th>vs 预训练</th></tr>
+        <tr><td>预训练 (SIGReg)</td><td>0.084055</td><td>1x</td></tr>
+        <tr><td style="color:var(--green);font-weight:600;">白化 (unfrozen)</td><td style="color:var(--green);font-weight:600;">0.000742</td><td style="color:var(--green);font-weight:600;">113x</td></tr>
+        <tr><td>白化 (frozen 50ep)</td><td>~0.018</td><td>~4.6x</td></tr>
+      </table>
+      <p style="font-size:0.85em;color:var(--text2);margin-top:8px;">unfrozen 版本预测误差降低 113 倍。frozen 版本各向同性更好但 MSE 较高。</p>
+    </div>
+
+    <div class="card">
+      <div style="font-weight: 600; margin-bottom: 10px;">各向同性指标</div>
+      <table class="mode-table" style="font-size:0.85em;">
+        <tr><th>模型</th><th>cond#</th><th>有效维度</th></tr>
+        <tr><td>预训练 (SIGReg)</td><td>7,137</td><td>84/192</td></tr>
+        <tr><td>白化 (unfrozen)</td><td>3,232,546</td><td>15/192</td></tr>
+        <tr><td style="color:var(--green);font-weight:600;">白化 (frozen)</td><td style="color:var(--green);font-weight:600;">32</td><td style="color:var(--green);font-weight:600;">115/192</td></tr>
+      </table>
+      <p style="font-size:0.85em;color:var(--text2);margin-top:8px;">frozen 版本条件数 32（良好各向同性），unfrozen 版本 encoder 漂移导致 3.2M。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ 7. NUMPY MINI-EXAMPLE ═══════════════════ -->
+<div class="section">
+  <div class="section-title"><span class="icon" style="background:rgba(255,107,107,0.15);color:var(--red);">▸</span> 最小验证</div>
+  <div class="card">
+    <p style="margin-bottom: 10px;">用 NumPy 验证白化层的数学性质：</p>
+    <div class="code">
+<span class="cm"># 生成 1000 个随机点，故意构造非各向同性分布</span>
+h = np.random.randn(<span class="num">1000</span>, <span class="num">4</span>) @ np.diag([<span class="num">5.0</span>, <span class="num">2.0</span>, <span class="num">0.5</span>, <span class="num">0.1</span>])
+
+<span class="cm"># 白化</span>
+cov = np.cov(h, rowvar=<span class="kw">False</span>)
+eigvals, eigvecs = np.linalg.eigh(cov)
+z = (h - h.mean(<span class="num">0</span>)) @ eigvecs @ np.diag(<span class="num">1.0</span> / np.sqrt(eigvals.clip(min=<span class="num">1e-4</span>))) @ eigvecs.T
+
+<span class="cm"># 验证：输出协方差 ≈ I</span>
+cov_z = np.cov(z, rowvar=<span class="kw">False</span>)
+np.allclose(cov_z, np.eye(<span class="num">4</span>), atol=<span class="num">1e-6</span>)  <span class="cm"># → True</span>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  LeWM WhiteningLayer · 实验记录：<a href="https://github.com/foreverzxc/le-wm/blob/main/EXPERIMENT_LOG.md" style="color: var(--accent);">EXPERIMENT_LOG.md</a>
+</div>
+
+</div>
+</body>
+</html>
