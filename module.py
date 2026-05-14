@@ -37,13 +37,14 @@ class SIGReg(torch.nn.Module):
 
 
 class WhiteningLayer(torch.nn.Module):
-    """可微分 Cholesky 白化层。
+    """可微分白化层（基于对称特征分解）。
 
     保证输出满足 E[z]=0, Cov[z]=I。
-    训练时使用 batch 统计量，推理时使用 running 统计量（与 BatchNorm 一致）。
+    训练时使用 batch 统计量，推理时使用 running 统计量。
+    特征值被 clamp 到底限 eps 以保证数值稳定性，支持 B*T < D 的欠定情形。
     """
 
-    def __init__(self, dim: int, momentum: float = 0.9, eps: float = 1e-6):
+    def __init__(self, dim: int, momentum: float = 0.9, eps: float = 1e-4):
         super().__init__()
         self.dim = dim
         self.momentum = momentum
@@ -52,38 +53,38 @@ class WhiteningLayer(torch.nn.Module):
         self.register_buffer("running_mean", torch.zeros(dim))
         self.register_buffer("running_cov", torch.eye(dim))
 
+    @staticmethod
+    def _whiten(x, mean, cov, eps):
+        """应用白化变换 z = cov^{-1/2} @ (x - mean)"""
+        # eigh 不支持 bf16，内部用 float32
+        orig_dtype = x.dtype
+        x_f32 = x.float()
+        mean_f32 = mean.float() if mean.ndim == 2 else mean.float()
+        centered = x_f32 - mean_f32
+        eigvals, eigvecs = torch.linalg.eigh(cov.float())
+        eigvals = eigvals.clamp(min=eps)
+        # cov^{-1/2} = V @ diag(1/√λ) @ V^T
+        transform = eigvecs * eigvals.rsqrt().unsqueeze(0)
+        whitened = centered @ transform @ eigvecs.T
+        return whitened.to(orig_dtype)
+
     def forward(self, x):
-        """
-        x: (B, T, D) or (B*T, D)
-        """
         shape = x.shape
-        if x.ndim == 3:
-            B, T, D = shape
-            x_flat = x.reshape(B * T, D)
-        else:
-            x_flat = x
+        x_flat = x.reshape(-1, self.dim)
 
         if self.training:
-            mean = x_flat.mean(0)
+            mean = x_flat.mean(0, keepdim=True)
             centered = x_flat - mean
             cov = (centered.T @ centered) / (centered.size(0) - 1)
 
             with torch.no_grad():
-                self.running_mean = self.momentum * self.running_mean + (
-                    1 - self.momentum
-                ) * mean
-                self.running_cov = self.momentum * self.running_cov + (
-                    1 - self.momentum
-                ) * cov
+                decay = self.momentum
+                self.running_mean = decay * self.running_mean + (1 - decay) * mean[0]
+                self.running_cov = decay * self.running_cov + (1 - decay) * cov
 
-            L = torch.linalg.cholesky(cov + self.eps * torch.eye(self.dim, device=x.device))
-            whitened = torch.linalg.solve_triangular(L, centered.T, upper=False).T
+            whitened = self._whiten(x_flat, mean, cov, self.eps)
         else:
-            centered = x_flat - self.running_mean
-            L = torch.linalg.cholesky(
-                self.running_cov + self.eps * torch.eye(self.dim, device=x.device)
-            )
-            whitened = torch.linalg.solve_triangular(L, centered.T, upper=False).T
+            whitened = self._whiten(x_flat, self.running_mean, self.running_cov, self.eps)
 
         return whitened.reshape(shape)
 

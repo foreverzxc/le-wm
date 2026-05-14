@@ -1,0 +1,40 @@
+Loading A: Baseline (SIGReg)...
+  Extracting embeddings...
+  Shape: torch.Size([40, 4, 192])
+  Condition number: 1353921635.22
+  Effective dim: 1.4 / 192
+  K@90%: 4, K@95%: 11
+  Max eigval: 0.1354, Min eigval: -0.000000
+
+Loading B: Whitening...
+  Extracting embeddings...
+  Shape: torch.Size([40, 4, 192])
+  Condition number: 356420833169.52
+  Effective dim: 5.6 / 192
+  K@90%: 18, K@95%: 29
+  Max eigval: 35.6421, Min eigval: -0.000000
+
+Loading C: Noise...
+  Extracting embeddings...
+  Shape: torch.Size([40, 4, 192])
+  Condition number: 14561814.82
+  Effective dim: 18.0 / 192
+  K@90%: 27, K@95%: 38
+  Max eigval: 0.0015, Min eigval: -0.000000
+
+Loading D: Whitening+Noise...
+  Extracting embeddings...
+  Shape: torch.Size([40, 4, 192])
+  Condition number: 162401450053.00
+  Effective dim: 7.2 / 192
+  K@90%: 24, K@95%: 35
+  Max eigval: 16.2401, Min eigval: -0.000000
+
+================================================================================
+Experiment                                    Cond#    Eff.Dim    K@90%    K@95%
+--------------------------------------------------------------------------------
+A: Baseline (SIGReg)                     1353921635.22      1.4/192      4      11
+B: Whitening                             356420833169.52      5.6/192     18      29
+C: Noise                                 14561814.82     18.0/192     27      38
+D: Whitening+Noise                       162401450053.00      7.2/192     24      35
+================================================================================

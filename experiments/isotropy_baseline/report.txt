@@ -1,0 +1,15 @@
+============================================================
+  LeWM Embedding Isotropy Test
+============================================================
+  Model:       /home/cyborg/.stable_worldmodel/experiments/baseline/lewm_baseline_epoch_3_object.ckpt
+  Dataset:     pusht_expert_train
+  Cache dir:   data
+  N samples:   500
+  Output dir:  experiments/isotropy_baseline
+
+[1/8] Loading model...
+  Model loaded. Type: JEPA
+
+[2/8] Extracting embeddings (n=500)...
+14:27:44.822 | INFO    (75555, stable_pretraining) | Cached 'action' from 'data/pusht_expert_train.h5'
+14:27:45.086 | INFO    (75555, stable_pretraining) | Cached 'proprio' from 'data/pusht_expert_train.h5'

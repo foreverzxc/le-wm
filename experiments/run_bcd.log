@@ -1,0 +1,7 @@
+==== B: Whitening ====
+B exit: 1
+==== C: Noise ====
+C exit: 0
+==== D: Whitening+Noise ====
+D exit: 1
+ALL DONE
