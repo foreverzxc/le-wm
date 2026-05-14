@@ -122,6 +122,8 @@ def main():
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--n-stats-samples", type=int, default=2000)
+    parser.add_argument("--freeze-encoder", action="store_true",
+                        help="冻结 encoder 权重，只训练 predictor")
     args = parser.parse_args()
 
     mode = args.mode
@@ -138,6 +140,13 @@ def main():
     # ── Load pre-trained model ──
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     jepa_model = torch.load(args.pretrained_ckpt, map_location=device, weights_only=False)
+
+    # Freeze encoder if requested
+    if args.freeze_encoder:
+        print("Freezing encoder (only predictor will be trained)...")
+        for name, param in jepa_model.encoder.named_parameters():
+            param.requires_grad_(False)
+        print(f"  Frozen {sum(1 for _ in jepa_model.encoder.parameters())} encoder parameters")
 
     if is_whitening:
         embed_dim = jepa_model.projector.net[-1].out_features
@@ -226,9 +235,12 @@ def main():
     manager = spt.Manager(trainer=trainer, module=pl_module, data=data_module)
     manager()
 
-    final = run_dir / f"{exp_name}_final_object.ckpt"
+    # Save final model in AutoCostModel-compatible format
+    suffix = "_frozen_enc" if args.freeze_encoder else ""
+    final = run_dir / f"{exp_name}{suffix}_object.ckpt"
     torch.save(jepa_model, final)
     print(f"\nFinal model saved to {final}")
+    print(f"  AutoCostModel load: swm.policy.AutoCostModel('{run_dir}')")
 
 
 if __name__ == "__main__":

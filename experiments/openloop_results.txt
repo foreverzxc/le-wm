@@ -1,0 +1,47 @@
+
+============================================================
+  Pre-trained (SIGReg)
+============================================================
+16:03:41.605 | INFO    (140580, stable_pretraining) | Cached 'action' from '/home/cyborg/.stable_worldmodel/pusht_expert_train.h5'
+  Step  1: MSE=0.006479  cum=0.006479
+  Step  2: MSE=0.008107  cum=0.014586
+  Step  3: MSE=0.009682  cum=0.024269
+  Step  4: MSE=0.008257  cum=0.032526
+  Step  5: MSE=0.008529  cum=0.041054
+  Step  6: MSE=0.007530  cum=0.048584
+  Step  7: MSE=0.007923  cum=0.056507
+  Step  8: MSE=0.008943  cum=0.065451
+  Step  9: MSE=0.007909  cum=0.073360
+  Step 10: MSE=0.010695  cum=0.084055
+  Final cumulative MSE: 0.084055
+
+============================================================
+  Whitening (unfrozen enc)
+============================================================
+16:03:48.118 | INFO    (140580, stable_pretraining) | Cached 'action' from '/home/cyborg/.stable_worldmodel/pusht_expert_train.h5'
+  Step  1: MSE=0.000078  cum=0.000078
+  Step  2: MSE=0.000075  cum=0.000153
+  Step  3: MSE=0.000075  cum=0.000228
+  Step  4: MSE=0.000074  cum=0.000302
+  Step  5: MSE=0.000074  cum=0.000376
+  Step  6: MSE=0.000074  cum=0.000450
+  Step  7: MSE=0.000073  cum=0.000524
+  Step  8: MSE=0.000073  cum=0.000596
+  Step  9: MSE=0.000073  cum=0.000670
+  Step 10: MSE=0.000073  cum=0.000742
+  Final cumulative MSE: 0.000742
+
+============================================================
+  COMPARISON
+============================================================
+  Step  1:  Pre-trained (SIGReg)=0.006479  Whitening (unfrozen =0.000078  ratio=0.01x
+  Step  2:  Pre-trained (SIGReg)=0.008107  Whitening (unfrozen =0.000075  ratio=0.01x
+  Step  3:  Pre-trained (SIGReg)=0.009682  Whitening (unfrozen =0.000075  ratio=0.01x
+  Step  4:  Pre-trained (SIGReg)=0.008257  Whitening (unfrozen =0.000074  ratio=0.01x
+  Step  5:  Pre-trained (SIGReg)=0.008529  Whitening (unfrozen =0.000074  ratio=0.01x
+  Step  6:  Pre-trained (SIGReg)=0.007530  Whitening (unfrozen =0.000074  ratio=0.01x
+  Step  7:  Pre-trained (SIGReg)=0.007923  Whitening (unfrozen =0.000073  ratio=0.01x
+  Step  8:  Pre-trained (SIGReg)=0.008943  Whitening (unfrozen =0.000073  ratio=0.01x
+  Step  9:  Pre-trained (SIGReg)=0.007909  Whitening (unfrozen =0.000073  ratio=0.01x
+  Step 10:  Pre-trained (SIGReg)=0.010695  Whitening (unfrozen =0.000073  ratio=0.01x
+  Final cumulative: Pre-trained (SIGReg)=0.084055  Whitening (unfrozen =0.000742  ratio=0.01x

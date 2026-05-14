@@ -1,0 +1,58 @@
+
+======================================================================
+  Evaluating: Pre-trained (SIGReg)
+  Model: /home/cyborg/.stable_worldmodel/pusht
+======================================================================
+15:40:19.787 | INFO    (127746, stable_worldmodel.policy) | Loading model from checkpoint: /home/cyborg/.stable_worldmodel/pusht/lewm_object.ckpt
+15:40:20.104 | INFO    (127746, stable_pretraining) | Cached 'action' from '/home/cyborg/.stable_worldmodel/pusht_expert_train.h5'
+15:40:20.129 | INFO    (127746, stable_pretraining) | Cached 'proprio' from '/home/cyborg/.stable_worldmodel/pusht_expert_train.h5'
+15:40:20.165 | INFO    (127746, stable_pretraining) | Cached 'state' from '/home/cyborg/.stable_worldmodel/pusht_expert_train.h5'
+/home/cyborg/WM/le-wm/.venv/lib/python3.10/site-packages/pygame/pkgdata.py:25: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import resource_stream, resource_exists
+15:40:21.162 | INFO    (127746, stable_worldmodel.world) | 🌍🌍🌍 World swm/PushT-v1 initialized 🌍🌍🌍
+15:40:21.162 | INFO    (127746, stable_worldmodel.world) | 🕹️ 🕹️ 🕹️ Action space 🕹️ 🕹️ 🕹️
+15:40:21.162 | INFO    (127746, stable_worldmodel.world) | Box(-1.0, 1.0, (10, 2), float32)
+15:40:21.163 | INFO    (127746, stable_worldmodel.world) | 👁️ 👁️ 👁️ Observation space 👁️ 👁️ 👁️
+15:40:21.163 | INFO    (127746, stable_worldmodel.world) | Dict('proprio': Box(0.0, 512.0, (10, 4), float64), 'state': Box(0.0, [[512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]
+ [512.         512.         512.         512.           6.28318531
+  512.         512.        ]], (10, 7), float64))
+15:40:21.163 | INFO    (127746, stable_worldmodel.world) | ⚗️ ⚗️ ⚗️ Variation space ⚗️ ⚗️ ⚗️
+agent:
+    angle: Box(-6.283185307179586, 6.283185307179586, (), float64)
+    color: Box(0, 255, (3,), uint8)
+    scale: Box(20.0, 60.0, (), float32)
+    shape: Discrete(8)
+    start_position: Box(50.0, 450.0, (2,), float64)
+    velocity: Box(0.0, 512.0, (2,), float64)
+background:
+    color: Box(0, 255, (3,), uint8)
+block:
+    angle: Box(-6.283185307179586, 6.283185307179586, (), float64)
+    color: Box(0, 255, (3,), uint8)
+    scale: Box(20.0, 60.0, (), float32)
+    shape: Discrete(7, start=1)
+    start_position: Box(100.0, 400.0, (2,), float64)
+goal:
+    angle: Box(-6.283185307179586, 6.283185307179586, (), float64)
+    color: Box(0, 255, (3,), uint8)
+    position: Box(50.0, 450.0, (2,), float64)
+    scale: Box(20.0, 60.0, (), float32)
+rendering:
+    render_goal: Discrete(2)
