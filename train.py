@@ -11,7 +11,7 @@ from lightning.pytorch.loggers import WandbLogger
 from omegaconf import OmegaConf, open_dict
 
 from jepa import JEPA
-from module import ARPredictor, Embedder, MLP, SIGReg
+from module import ARPredictor, Embedder, MLP, SIGReg, WhiteningLayer, NoiseInjection
 from utils import get_column_normalizer, get_img_preprocessor, ModelObjectCallBack
 
 
@@ -20,15 +20,18 @@ def lejepa_forward(self, batch, stage, cfg):
 
     ctx_len = cfg.wm.history_size
     n_preds = cfg.wm.num_preds
-    lambd = cfg.loss.sigreg.weight
 
     # Replace NaN values with 0 (occurs at sequence boundaries)
     batch["action"] = torch.nan_to_num(batch["action"], 0.0)
 
     output = self.model.encode(batch)
 
-    emb = output["emb"]  # (B, T, D)
+    emb = output["emb"]  # (B, T, D) — already whitened if enabled
     act_emb = output["act_emb"]
+
+    # Noise injection (after whitening, before predictor)
+    if hasattr(self, "noise_injection") and self.noise_injection is not None:
+        emb = self.noise_injection(emb)
 
     ctx_emb = emb[:, :ctx_len]
     ctx_act = act_emb[:, : ctx_len]
@@ -38,8 +41,13 @@ def lejepa_forward(self, batch, stage, cfg):
 
     # LeWM loss
     output["pred_loss"] = (pred_emb - tgt_emb).pow(2).mean()
-    output["sigreg_loss"]= self.sigreg(emb.transpose(0, 1))
-    output["loss"] = output["pred_loss"] + lambd * output["sigreg_loss"]  
+
+    # SIGReg (if enabled)
+    if hasattr(self, "sigreg") and self.sigreg is not None:
+        output["sigreg_loss"] = self.sigreg(emb.transpose(0, 1))
+        output["loss"] = output["pred_loss"] + cfg.loss.sigreg.weight * output["sigreg_loss"]
+    else:
+        output["loss"] = output["pred_loss"]
 
     losses_dict = {f"{stage}/{k}": v.detach() for k, v in output.items() if "loss" in k}
     self.log_dict(losses_dict, on_step=True, sync_dist=True)
@@ -115,12 +123,16 @@ def run(cfg):
         norm_fn=torch.nn.BatchNorm1d,
     )
 
+    # Optional whitening layer (architectural anti-collapse, replaces SIGReg)
+    whitening = WhiteningLayer(dim=embed_dim) if cfg.whitening.enabled else None
+
     world_model = JEPA(
         encoder=encoder,
         predictor=predictor,
         action_encoder=action_encoder,
         projector=projector,
         pred_proj=predictor_proj,
+        whitening=whitening,
     )
 
     optimizers = {
@@ -132,10 +144,14 @@ def run(cfg):
         },
     }
 
+    # Optional noise injection
+    noise_injection = NoiseInjection(std=cfg.noise.std) if cfg.noise.enabled else None
+
     data_module = spt.data.DataModule(train=train, val=val)
     world_model = spt.Module(
         model = world_model,
-        sigreg = SIGReg(**cfg.loss.sigreg.kwargs),
+        sigreg = SIGReg(**cfg.loss.sigreg.kwargs) if cfg.loss.sigreg.enabled else None,
+        noise_injection = noise_injection,
         forward=partial(lejepa_forward, cfg=cfg),
         optim=optimizers,
     )

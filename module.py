@@ -34,7 +34,76 @@ class SIGReg(torch.nn.Module):
         err = (x_t.cos().mean(-3) - self.phi).square() + x_t.sin().mean(-3).square()
         statistic = (err @ self.weights) * proj.size(-2)
         return statistic.mean() # average over projections and time
-    
+
+
+class WhiteningLayer(torch.nn.Module):
+    """可微分 Cholesky 白化层。
+
+    保证输出满足 E[z]=0, Cov[z]=I。
+    训练时使用 batch 统计量，推理时使用 running 统计量（与 BatchNorm 一致）。
+    """
+
+    def __init__(self, dim: int, momentum: float = 0.9, eps: float = 1e-6):
+        super().__init__()
+        self.dim = dim
+        self.momentum = momentum
+        self.eps = eps
+
+        self.register_buffer("running_mean", torch.zeros(dim))
+        self.register_buffer("running_cov", torch.eye(dim))
+
+    def forward(self, x):
+        """
+        x: (B, T, D) or (B*T, D)
+        """
+        shape = x.shape
+        if x.ndim == 3:
+            B, T, D = shape
+            x_flat = x.reshape(B * T, D)
+        else:
+            x_flat = x
+
+        if self.training:
+            mean = x_flat.mean(0)
+            centered = x_flat - mean
+            cov = (centered.T @ centered) / (centered.size(0) - 1)
+
+            with torch.no_grad():
+                self.running_mean = self.momentum * self.running_mean + (
+                    1 - self.momentum
+                ) * mean
+                self.running_cov = self.momentum * self.running_cov + (
+                    1 - self.momentum
+                ) * cov
+
+            L = torch.linalg.cholesky(cov + self.eps * torch.eye(self.dim, device=x.device))
+            whitened = torch.linalg.solve_triangular(L, centered.T, upper=False).T
+        else:
+            centered = x_flat - self.running_mean
+            L = torch.linalg.cholesky(
+                self.running_cov + self.eps * torch.eye(self.dim, device=x.device)
+            )
+            whitened = torch.linalg.solve_triangular(L, centered.T, upper=False).T
+
+        return whitened.reshape(shape)
+
+
+class NoiseInjection(torch.nn.Module):
+    """向隐空间注入各向同性高斯噪声。
+
+    仅训练时生效，推理时恒等映射。
+    """
+
+    def __init__(self, std: float = 0.1):
+        super().__init__()
+        self.std = std
+
+    def forward(self, x):
+        if self.training and self.std > 0:
+            return x + torch.randn_like(x) * self.std
+        return x
+
+
 class FeedForward(nn.Module):
     """FeedForward network used in Transformers"""
 

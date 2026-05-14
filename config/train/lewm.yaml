@@ -58,7 +58,15 @@ predictor:
 
 loss:
   sigreg:
+    enabled: true
     weight: 0.09
     kwargs:
       knots: 17
       num_proj: 1024
+
+whitening:
+  enabled: false
+
+noise:
+  enabled: false
+  std: 0.1
