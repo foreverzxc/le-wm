@@ -1,0 +1,8 @@
+# Cross-dataset: Pusht + Cube + Reacher + TwoRooms
+# Actions zero-padded to 25D (Cube = max at 5D × frameskip 5)
+# max_samples: null = full dataset (~6.35M samples); set to N for quick tests
+dataset_class: true
+
+dataset:
+  _target_: multidata.build_cross4_dataset
+  max_samples: null  # set to e.g. 200 for quick smoke test

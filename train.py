@@ -67,13 +67,14 @@ def run(cfg):
     transforms = [get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size)]
 
     with open_dict(cfg):
-        for col in cfg.data.dataset.keys_to_load:
+        for col in cfg.data.dataset.get("keys_to_load", []):
             if col.startswith("pixels"):
                 continue
             normalizer = get_column_normalizer(dataset, col, col)
             transforms.append(normalizer)
 
-        cfg.model.action_encoder.input_dim = cfg.data.dataset.frameskip * dataset.get_dim("action")
+        fs = cfg.data.dataset.get("frameskip", getattr(dataset, "frameskip", 1))
+        cfg.model.action_encoder.input_dim = fs * dataset.get_dim("action")
 
     transform = spt.data.transforms.Compose(*transforms)
     dataset.transform = transform

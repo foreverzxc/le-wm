@@ -36,6 +36,18 @@ libero-small: logs/train
 		data.dataset.max_episodes=50 \
 		2>&1 | tee $(LOG_TRAIN)_libero_small.log
 
+# ── Cross-dataset WM (4 datasets: Pusht+Cube+Reacher+TwoRooms) ──────
+.PHONY: cross4
+cross4: logs/train
+	PYTHONUNBUFFERED=1 $(VENV) train.py \
+		data=cross4 img_size=224 \
+		trainer.max_epochs=10 \
+		loader.batch_size=8 loader.num_workers=2 \
+		optimizer.lr=2e-5 \
+		loss.sigreg.weight=0.05 \
+		trainer.gradient_clip_val=0.5 \
+		2>&1 | tee $(LOG_TRAIN)_cross4.log
+
 # ── PushT (benchmark) ─────────────────────────────────────────────────
 .PHONY: pusht
 pusht: logs/train
