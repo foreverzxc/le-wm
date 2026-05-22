@@ -1,0 +1,19 @@
+# Overfitting sanity check: single LIBERO episode, high-capacity, expect loss → 0
+dataset_class: true
+
+dataset:
+  _target_: libero_data.LiberoDataset
+  path: /home/cyborg/WM/LIBERO-datasets/libero_10
+  frameskip: 5
+  num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+  image_key: agentview_rgb
+  max_episodes: 1
+  keys_to_load:
+    - pixels
+    - action
+    - proprio
+    - state
+  keys_to_cache:
+    - action
+    - proprio
+    - state

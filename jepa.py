@@ -143,6 +143,9 @@ class JEPA(nn.Module):
                 goal[k[len("goal_") :]] = goal.pop(k)
 
         goal.pop("action")
+        # Ensure pixels has a time dimension (encode expects B, T, C, H, W)
+        if goal["pixels"].ndim == 4:
+            goal["pixels"] = goal["pixels"].unsqueeze(1)
         goal = self.encode(goal)
 
         info_dict["goal_emb"] = goal["emb"]

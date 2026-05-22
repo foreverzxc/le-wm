@@ -23,8 +23,23 @@ class ZScoreNormalizer:
 
 
 def get_column_normalizer(dataset, source: str, target: str):
-    """Get normalizer for a specific column in the dataset."""
-    col_data = dataset.get_col_data(source)
+    """Get normalizer for a specific column in the dataset.
+
+    For large datasets (e.g. LIBERO), samples episodes instead of scanning
+    all data to avoid minutes of HDF5 I/O during startup.
+    """
+    # Use load_episode sampling path when available (LiberoDataset etc.)
+    n_episodes = len(dataset._episode_meta) if hasattr(dataset, '_episode_meta') else 0
+    if n_episodes > 10 and hasattr(dataset, 'load_episode'):
+        # Sample episodes evenly across the dataset
+        rng = np.random.default_rng(42)
+        n_sample = min(10, n_episodes)
+        indices = np.linspace(0, n_episodes - 1, n_sample, dtype=int)
+        parts = [dataset.load_episode(int(i))[source] for i in indices]
+        col_data = np.concatenate(parts, axis=0)
+    else:
+        col_data = dataset.get_col_data(source)
+
     data = torch.from_numpy(np.array(col_data))
     data = data[~torch.isnan(data).any(dim=1)]
     mean = data.mean(0, keepdim=True).clone()
@@ -51,10 +66,18 @@ class SaveCkptCallback(Callback):
                 self._save(pl_module.model, trainer.current_epoch + 1)
 
     def _save(self, model, epoch):
-        from stable_worldmodel.wm.utils import save_pretrained
-        save_pretrained(
-            model,
-            run_name=self.run_name,
-            config=self.cfg,
-            filename=f'weights_epoch_{epoch}.pt',
-        )
+        from pathlib import Path
+        import json
+        import torch
+        from omegaconf import OmegaConf
+        from stable_worldmodel.data.utils import get_cache_dir
+
+        run_dir = Path(get_cache_dir(), "checkpoints")
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        weight_path = run_dir / f"{self.run_name}_weights_epoch_{epoch}.pt"
+        torch.save(model.state_dict(), weight_path)
+
+        config_path = run_dir / f"{self.run_name}_config_epoch_{epoch}.json"
+        config_dict = OmegaConf.to_container(self.cfg, resolve=True)
+        config_path.write_text(json.dumps(config_dict, indent=2, default=str))

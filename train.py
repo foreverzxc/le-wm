@@ -12,6 +12,7 @@ from omegaconf import OmegaConf, open_dict
 
 from module import SIGReg
 from utils import get_column_normalizer, get_img_preprocessor, SaveCkptCallback
+from libero_data import LiberoDataset
 
 
 def lejepa_forward(self, batch, stage, cfg):
@@ -50,14 +51,21 @@ def run(cfg):
     ##       dataset       ##
     #########################
 
-    dataset_cfg = OmegaConf.to_container(cfg.data.dataset, resolve=True)
-    dataset_name = dataset_cfg.pop("name")
-    cache_dir = os.environ.get("LOCAL_DATASET_DIR", None)
-    dataset = swm.data.load_dataset(
-        dataset_name, transform=None, cache_dir=cache_dir, **dataset_cfg
-    )
+    if cfg.data.get("dataset_class"):
+        dataset = hydra.utils.instantiate(cfg.data.dataset)
+    else:
+        dataset_cfg = OmegaConf.to_container(cfg.data.dataset, resolve=True)
+        dataset_name = dataset_cfg.pop("name")
+        # Strip extension — HDF5Dataset appends .h5 internally, so both
+        # "pusht_expert_train.h5" and "pusht_expert_train.lance" resolve correctly.
+        dataset_name = os.path.splitext(dataset_name)[0]
+        cache_dir = os.environ.get("LOCAL_DATASET_DIR", None)
+        dataset = swm.data.HDF5Dataset(
+            dataset_name, transform=None, cache_dir=cache_dir, **dataset_cfg
+        )
+
     transforms = [get_img_preprocessor(source='pixels', target='pixels', img_size=cfg.img_size)]
-    
+
     with open_dict(cfg):
         for col in cfg.data.dataset.keys_to_load:
             if col.startswith("pixels"):
@@ -106,7 +114,7 @@ def run(cfg):
     ##########################
 
     run_id = cfg.get("subdir") or ""
-    run_dir = Path(swm.data.utils.get_cache_dir(sub_folder='checkpoints'), run_id)
+    run_dir = Path(swm.data.utils.get_cache_dir(), 'checkpoints', run_id)
 
     logger = None
     if cfg.wandb.enabled:

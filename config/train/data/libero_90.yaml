@@ -1,0 +1,24 @@
+# LIBERO-90: 90 tasks, 50 demos each = 4500 episodes
+# Tests generalization across objects, spatial layouts, and action compositions.
+#
+# Usage:
+#   python train.py data=libero_90 img_size=128
+
+dataset_class: true
+
+dataset:
+  _target_: libero_data.LiberoDataset
+  path: /home/cyborg/WM/LIBERO-datasets/libero_90
+  frameskip: 5
+  num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+  image_key: agentview_rgb
+  max_episodes: null  # set to 1 for overfitting sanity check
+  keys_to_load:
+    - pixels
+    - action
+    - proprio
+    - state
+  keys_to_cache:
+    - action
+    - proprio
+    - state

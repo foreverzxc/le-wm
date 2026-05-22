@@ -7,12 +7,28 @@ defaults:
 output_model_name: lewm
 subdir: ${hydra:job.id}
 
+# Redirect Hydra outputs
+hydra:
+  run:
+    dir: output/hydra/${hydra:job.id}
+
+wandb:
+  enabled: False  # Set True to enable WandB logging
+  config:
+    entity: lewm
+    project: lewm
+    name: ${output_model_name}
+    id: ${subdir}
+    resume: allow
+    log_model: False
+
 num_workers: 6
 train_split: 0.9
 seed: 3072
 img_size: 224
 
 trainer:
+  default_root_dir: output
   max_epochs: 100
   devices: auto
   accelerator: gpu
@@ -20,7 +36,7 @@ trainer:
   gradient_clip_val: 1.0
 
 loader:
-  batch_size: 128
+  batch_size: 2
   num_workers: ${num_workers}
   persistent_workers: True
   prefetch_factor: 3

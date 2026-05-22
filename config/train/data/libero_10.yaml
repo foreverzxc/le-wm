@@ -1,0 +1,25 @@
+# LIBERO-10: 10 tasks, 50 demos each = 500 episodes
+# Tests generalization to new scene layouts and object combinations.
+#
+# Usage:
+#   python train.py data=libero_10 img_size=128
+#   python train.py data=libero_10 img_size=128 wandb.enabled=true
+
+dataset_class: true
+
+dataset:
+  _target_: libero_data.LiberoDataset
+  path: /home/cyborg/WM/LIBERO-datasets/libero_10
+  frameskip: 5
+  num_steps: ${eval:'${wm.num_preds} + ${wm.history_size}'}
+  image_key: agentview_rgb
+  max_episodes: null  # set to 1 for overfitting sanity check
+  keys_to_load:
+    - pixels
+    - action
+    - proprio
+    - state
+  keys_to_cache:
+    - action
+    - proprio
+    - state

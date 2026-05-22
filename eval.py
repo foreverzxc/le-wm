@@ -46,6 +46,56 @@ def get_dataset(cfg, dataset_name):
     )
     return dataset
 
+
+def load_model_from_checkpoint(run_name, cache_dir=None):
+    """Load a JEPA model from state-dict + config JSON checkpoints.
+
+    Handles both bare run names ("lewm") and scoped paths ("pusht/lewm") —
+    the last path component is used as the checkpoint name prefix.
+    """
+    import json
+
+    cache_dir = Path(cache_dir or swm.data.utils.get_cache_dir())
+    ckpt_dir = cache_dir / "checkpoints"
+
+    # Use the last path component as the checkpoint name prefix
+    ckpt_name = Path(run_name).name
+
+    # Search in checkpoints root and in a subdirectory named after the run
+    search_dirs = [ckpt_dir]
+    sub_dir = ckpt_dir / run_name
+    if sub_dir.is_dir():
+        search_dirs.insert(0, sub_dir)
+
+    weight_files = []
+    for d in search_dirs:
+        weight_files = sorted(d.glob(f"{ckpt_name}*_weights_epoch_*.pt"))
+        if weight_files:
+            break
+
+    if not weight_files:
+        raise FileNotFoundError(
+            f"No checkpoint found for '{run_name}' (ckpt_name='{ckpt_name}') in {ckpt_dir}"
+        )
+
+    # Use the latest (highest epoch) checkpoint
+    weight_path = weight_files[-1]
+
+    # Derive config path: same parent dir, same epoch number
+    config_stem = weight_path.stem.replace("_weights_epoch_", "_config_epoch_")
+    config_path = weight_path.parent / f"{config_stem}.json"
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
+
+    config = json.loads(config_path.read_text())
+    config = OmegaConf.create(config)
+    model = hydra.utils.instantiate(config)
+
+    state_dict = torch.load(weight_path, map_location="cpu", weights_only=True)
+    model.load_state_dict(state_dict)
+
+    return model
+
 @hydra.main(version_base=None, config_path="./config/eval", config_name="pusht")
 def run(cfg: DictConfig):
     """Run evaluation of dinowm vs random policy."""
@@ -85,11 +135,10 @@ def run(cfg: DictConfig):
     policy = cfg.get("policy", "random")
 
     if policy != "random":
-        model = swm.wm.utils.load_pretrained(cfg.policy)
+        model = load_model_from_checkpoint(cfg.policy, cache_dir=cfg.cache_dir)
         model = model.to("cuda")
         model = model.eval()
         model.requires_grad_(False)
-        model.interpolate_pos_encoding = True
         config = swm.PlanConfig(**cfg.plan_config)
         solver = hydra.utils.instantiate(cfg.solver, model=model)
         policy = swm.policy.WorldModelPolicy(
@@ -141,14 +190,14 @@ def run(cfg: DictConfig):
     results_path.mkdir(parents=True, exist_ok=True)
 
     start_time = time.time()
-    metrics = world.evaluate(
+    metrics = world.evaluate_from_dataset(
         dataset=dataset,
         start_steps=eval_start_idx.tolist(),
-        goal_offset=cfg.eval.goal_offset_steps,
+        goal_offset_steps=cfg.eval.goal_offset_steps,
         eval_budget=cfg.eval.eval_budget,
         episodes_idx=eval_episodes.tolist(),
         callables=OmegaConf.to_container(cfg.eval.get("callables"), resolve=True),
-        video=results_path,
+        video_path=results_path,
     )
     end_time = time.time()
     
