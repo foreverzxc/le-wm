@@ -134,11 +134,22 @@ viz-overfit: logs/infer
 viz-planner:
 	PYTHONUNBUFFERED=1 $(VENV) scripts/viz_planner_actions.py
 
-# ── Offline eval ──────────────────────────────────────────────────────
-.PHONY: eval-overfit
-eval-overfit: logs/infer
-	PYTHONUNBUFFERED=1 $(VENV) scripts/eval_overfit.py \
-		2>&1 | tee $(LOG_INFER)_eval_overfit.log
+# ── Planner experiments ───────────────────────────────────────────────
+.PHONY: planner-t1 planner-t5 planner-sim gt-error
+
+planner-t1: logs/infer
+	PYTHONUNBUFFERED=1 $(VENV) scripts/planner_overfit_t1.py \
+		2>&1 | tee $(LOG_INFER)_planner_t1.log
+
+planner-t5: logs/infer
+	PYTHONUNBUFFERED=1 $(VENV) scripts/planner_overfit_t5.py \
+		2>&1 | tee $(LOG_INFER)_planner_t5.log
+
+planner-sim:
+	PYTHONUNBUFFERED=1 $(VENV) scripts/sim_planner_action.py
+
+gt-error:
+	PYTHONUNBUFFERED=1 $(VENV) scripts/gt_rollout_error.py
 
 # ── Evaluation (MPC planning) ─────────────────────────────────────────
 .PHONY: eval-pusht eval-cube eval-reacher eval-tworoom
@@ -199,10 +210,12 @@ help:
 	@echo ""
 	@echo "  Inference & Eval:"
 	@echo "    make batch-surprise                 4×4 cross-dataset surprise"
+	@echo "    make planner-t1 / planner-t5         Planner overfit experiments"
+	@echo "    make planner-sim                     Simulate planner action in env"
+	@echo "    make gt-error                        GT rollout error analysis"
 	@echo "    make surprise DATASET=libero EP=0    Surprise along trajectory"
-	@echo "    make viz-overfit                     Embedding visualization"
-	@echo "    make eval-overfit                    Offline MPC eval"
-	@echo "    make eval-pusht / eval-cube / ...    MPC evaluation"
+	@echo "    make batch-surprise                  4×4 cross-dataset surprise"
+	@echo "    make viz-overfit / viz-planner       Visualizations"
 	@echo ""
 	@echo "  Utilities:"
 	@echo "    make list-logs      Show all experiment logs"
