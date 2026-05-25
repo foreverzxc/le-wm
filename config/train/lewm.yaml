@@ -59,3 +59,14 @@ loss:
     kwargs:
       knots: 17
       num_proj: 1024
+
+planner:
+  ckpt: pusht                    # pretrained WM checkpoint name
+  num_queries: 8                 # N candidate action plans
+  num_layers: 4                  # transformer decoder layers
+  num_heads: 8                   # attention heads
+  mlp_dim: 1024                  # FFN hidden dim
+  horizon: 5                     # planning horizon (steps)
+  action_dim: 2                  # raw action dim per step
+  dropout: 0.1
+  diversity_weight: 0.1          # λ for DETR-style diversity loss

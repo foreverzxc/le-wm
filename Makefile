@@ -48,6 +48,20 @@ cross4: logs/train
 		trainer.gradient_clip_val=0.5 \
 		2>&1 | tee $(LOG_TRAIN)_cross4.log
 
+# ── Planner (on frozen WM) ───────────────────────────────────────────
+.PHONY: planner
+planner: logs/train
+	PYTHONUNBUFFERED=1 $(VENV) train_planner.py \
+		data=pusht img_size=224 \
+		trainer.max_epochs=30 \
+		loader.batch_size=8 loader.num_workers=0 \
+		loader.prefetch_factor=null loader.persistent_workers=false \
+		optimizer.lr=1e-4 \
+		planner.ckpt=pusht \
+		planner.horizon=5 planner.num_queries=8 \
+		planner.diversity_weight=0.1 \
+		2>&1 | tee $(LOG_TRAIN)_planner.log
+
 # ── PushT (benchmark) ─────────────────────────────────────────────────
 .PHONY: pusht
 pusht: logs/train
