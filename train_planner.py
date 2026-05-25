@@ -90,15 +90,15 @@ def planner_forward(self, batch, stage, cfg):
         goal_emb = goal_out["emb"][:, -1:]  # (B, 1, D)
 
     # Planner produces N action candidates (has grad)
-    history_ctx = ctx_emb[:, :cfg.wm.history_size]
-    actions = self.model(history_ctx[:, -1:], goal_emb)  # (B, N, T, A)
+    # Pass full history context so planner can infer velocities / dynamics
+    history_ctx = ctx_emb[:, :cfg.wm.history_size]  # (B, HS, D)
+    actions = self.model(history_ctx, goal_emb)  # (B, N, T, A)
 
     # Extract real historical actions from batch
     hs = cfg.wm.history_size
     raw_act = actions.shape[-1]
     fs = self.wm.action_encoder.patch_embed.in_channels // raw_act
-    hist_actions = ctx_batch["action"][:, :hs]  # (B, HS, fs * raw_dim)
-    hist_actions = hist_actions.reshape(B, hs, fs, raw_act).mean(2)  # (B, HS, raw_dim)
+    hist_actions = ctx_batch["action"][:, :hs]  # (B, HS, fs * raw_dim) — keep individual actions
 
     # Rollout through frozen WM
     info = {"pixels": ctx_batch["pixels"][:, :hs]}

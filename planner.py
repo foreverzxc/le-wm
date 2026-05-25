@@ -85,7 +85,7 @@ class PlannerDecoder(nn.Module):
 
         Args:
             ctx_emb:  (B, 1, D)  context embedding
-            goal_emb: (B, 1, D)  goal embedding
+            goal_emb: (B, His_Len, D)  goal embedding
 
         Returns:
             actions: (B, N, horizon, action_dim)  action series per query
@@ -95,7 +95,7 @@ class PlannerDecoder(nn.Module):
         # Memory: [goal, ctx] — queries cross-attend to this
         memory = torch.cat([
             self.input_proj(goal_emb),   # (B, 1, D)
-            self.input_proj(ctx_emb),    # (B, 1, D)
+            self.input_proj(ctx_emb),    # (B, His_Len, D)
         ], dim=1)  # (B, 2, D)
 
         # Queries: N learnable tokens
@@ -107,9 +107,7 @@ class PlannerDecoder(nn.Module):
         # Predict action series per query
         actions = self.action_head(out)  # (B, N, horizon * action_dim)
         actions = actions.reshape(B, self.num_queries, self.horizon, self.action_dim)
-        # No tanh — raw actions, constrained by L2 penalty during training.
-        # Clip to [-action_range, action_range] only at inference / simulation.
-        actions = actions * self.action_range
+        actions = (2 * torch.sigmoid(actions) - 1) * self.action_range
 
         return actions
 
@@ -220,8 +218,10 @@ def planner_rollout(wm, actions, info_dict, history_size=3, hist_actions=None,
 
     # Build initial action history from real past actions, or zeros
     if hist_actions is not None:
-        hist_expanded = hist_actions.repeat_interleave(fs, dim=-1)  # (B, HS, fs*raw_dim)
-        hist_expanded = hist_expanded.unsqueeze(1).expand(-1, N, -1, -1)
+        # Support both raw_dim (from old scripts) and fs*raw_dim (from training)
+        if hist_actions.shape[-1] == raw_act_dim:
+            hist_actions = hist_actions.repeat_interleave(fs, dim=-1)
+        hist_expanded = hist_actions.unsqueeze(1).expand(-1, N, -1, -1)
         hist_act = rearrange(hist_expanded, "b n t d -> (b n) t d")  # (B*N, HS, D_act)
     else:
         hist_act = torch.zeros(B * N, HS, act_flat.shape[-1], device=actions.device)
@@ -229,7 +229,14 @@ def planner_rollout(wm, actions, info_dict, history_size=3, hist_actions=None,
     # Autoregressive rollout
     for t in range(T):
         cur_act = act_flat[:, t:t + 1]
-        hist_act = torch.cat([hist_act[:, 1:], cur_act], dim=1)
+
+        if t == 0:
+            # First step: replace only the last historical action with P[0].
+            # emb still has [f0, f1, f2] — keep A[0], A[1] aligned, replace A[2].
+            hist_act[:, -1:] = cur_act
+        else:
+            # Subsequent steps: shift (oldest drops with emb truncation) + append.
+            hist_act = torch.cat([hist_act[:, 1:], cur_act], dim=1)
 
         act_emb = wm.action_encoder(hist_act)
         pred = wm.predict(emb[:, -HS:], act_emb)[:, -1:]
