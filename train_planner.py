@@ -148,6 +148,12 @@ def run(cfg):
     # Load frozen WM
     wm = load_frozen_wm(cfg.planner.ckpt)
 
+    # Auto-detect action_dim from WM if not set in config
+    action_dim = cfg.planner.action_dim
+    if action_dim is None:
+        # WM action_encoder input_dim = frameskip * raw_action_dim
+        action_dim = wm.action_encoder.patch_embed.in_channels // dataset.frameskip
+
     # Planner decoder
     planner = PlannerDecoder(
         embed_dim=cfg.wm.embed_dim,
@@ -156,9 +162,13 @@ def run(cfg):
         num_heads=cfg.planner.num_heads,
         mlp_dim=cfg.planner.mlp_dim,
         horizon=cfg.planner.horizon,
-        action_dim=cfg.planner.action_dim,
+        action_dim=action_dim,
         dropout=cfg.planner.dropout,
     )
+
+    print(f"Planner: {cfg.planner.num_queries} queries × "
+          f"{cfg.planner.horizon} steps × {action_dim}D action "
+          f"(total output: {cfg.planner.num_queries}×{cfg.planner.horizon}×{action_dim})")
 
     planner_loss = PlannerLoss(diversity_weight=cfg.planner.diversity_weight)
 

@@ -14,7 +14,14 @@ from einops import rearrange
 
 
 class PlannerDecoder(nn.Module):
-    """Self-attention decoder over [goal_emb, ctx_emb, learnable_queries].
+    """Perceiver-style decoder: N learned queries, cross-attend to [goal, ctx].
+
+    Each query produces one action series of length ``horizon``.
+
+    Architecture per layer:
+        1. Self-attention among queries (diverse planning)
+        2. Cross-attention: queries ← [goal_emb, ctx_emb]
+        3. FFN
 
     Args:
         embed_dim: WM embedding dimension (192).
@@ -22,7 +29,7 @@ class PlannerDecoder(nn.Module):
         num_layers: Transformer decoder layers.
         num_heads: Attention heads.
         mlp_dim: FFN hidden dimension.
-        horizon: Number of future steps to plan.
+        horizon: Length of output action series (T).
         action_dim: Raw action dimension per step.
         dropout: Dropout rate.
     """
@@ -69,34 +76,34 @@ class PlannerDecoder(nn.Module):
         )
 
     def forward(self, ctx_emb: torch.Tensor, goal_emb: torch.Tensor):
-        """Produce N action sequences.
+        """Produce N action sequences (Perceiver-style).
+
+        - Queries do self-attention among themselves (learn diverse plans)
+        - Queries cross-attend to [goal, ctx] (condition on task)
 
         Args:
-            ctx_emb:  (B, 1, D)  context embedding (encoded from pixels)
+            ctx_emb:  (B, 1, D)  context embedding
             goal_emb: (B, 1, D)  goal embedding
 
         Returns:
-            actions: (B, N, horizon * action_dim)  raw action sequences
+            actions: (B, N, horizon, action_dim)  action series per query
         """
         B = ctx_emb.size(0)
-        D = self.embed_dim
 
-        # Build input sequence: [goal, ctx, queries]
-        goal = self.input_proj(goal_emb)       # (B, 1, D)
-        ctx = self.input_proj(ctx_emb)          # (B, 1, D)
+        # Memory: [goal, ctx] — queries cross-attend to this
+        memory = torch.cat([
+            self.input_proj(goal_emb),   # (B, 1, D)
+            self.input_proj(ctx_emb),    # (B, 1, D)
+        ], dim=1)  # (B, 2, D)
+
+        # Queries: N learnable tokens
         queries = self.query_embed.expand(B, -1, -1)  # (B, N, D)
 
-        # Triplet input: concat along sequence dimension
-        decoder_input = torch.cat([goal, ctx, queries], dim=1)  # (B, 2+N, D)
+        # Decoder: self-attn among queries, then cross-attn to [goal, ctx]
+        out = self.decoder(tgt=queries, memory=memory)  # (B, N, D)
 
-        # Self-attention (no separate memory — queries attend to goal and ctx)
-        out = self.decoder(decoder_input, decoder_input)  # (B, 2+N, D)
-
-        # Extract query outputs
-        query_out = out[:, 2:, :]  # (B, N, D)
-
-        # Predict action sequences
-        actions = self.action_head(query_out)  # (B, N, horizon * action_dim)
+        # Predict action series per query
+        actions = self.action_head(out)  # (B, N, horizon * action_dim)
         actions = actions.reshape(B, self.num_queries, self.horizon, self.action_dim)
 
         return actions
