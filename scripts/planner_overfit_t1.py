@@ -1,6 +1,7 @@
 """Planner overfit on 1 PushT episode, T=1 horizon.
 
-Tests: can the planner learn a single action that matches GT?
+Shows context/goal from the SAME episode, planner vs GT action comparison,
+and training loss curve. No env simulation (state-matching not available).
 
 Usage:
     python scripts/planner_overfit_t1.py
@@ -9,7 +10,7 @@ import json, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import numpy as np, torch, imageio, gymnasium as gym
+import numpy as np, torch
 from matplotlib import pyplot as plt
 import matplotlib; matplotlib.use("Agg")
 from omegaconf import OmegaConf
@@ -63,11 +64,10 @@ def main():
     ds = torch.utils.data.Subset(ds, indices)
     ds_raw = torch.utils.data.Subset(ds_raw, indices)
 
-    # T=1 planner
     N, T, ctx_len, raw_act = 4, 1, 3, 2
     fs = wm.action_encoder.patch_embed.in_channels // raw_act
     planner = PlannerDecoder(embed_dim=192, num_queries=N, horizon=T,
-                              action_dim=2, num_layers=3).cuda()
+                              action_dim=raw_act, num_layers=3).cuda()
     loss_fn = PlannerLoss(diversity_weight=0.0)
     opt = torch.optim.AdamW(planner.parameters(), lr=1e-3)
 
@@ -81,13 +81,15 @@ def main():
             item = ds[idx]
             batch = {k: v.unsqueeze(0).cuda() for k, v in item.items()
                      if torch.is_tensor(v)}
+            B = 1
             with torch.no_grad():
                 out = wm.encode(batch)
                 ctx_emb = out["emb"][:, :ctx_len]
                 goal_emb = out["emb"][:, -1:]
+
             actions = planner(ctx_emb[:, -1:], goal_emb)
             info = {"pixels": batch["pixels"][:, :ctx_len]}
-            hist_act = batch["action"][:, :ctx_len].reshape(1, ctx_len, fs, raw_act).mean(2)
+            hist_act = batch["action"][:, :ctx_len].reshape(B, ctx_len, fs, raw_act).mean(2)
             pred_embs, _ = planner_rollout(wm, actions, info, history_size=ctx_len,
                                              hist_actions=hist_act, goal_emb=goal_emb)
             loss, _ = loss_fn(actions, pred_embs, goal_emb)
@@ -99,7 +101,7 @@ def main():
         if epoch % 5 == 0 or epoch == n_epochs - 1:
             print(f"  epoch {epoch:3d}: loss={epoch_loss/len(ds):.6f}")
 
-    # ── Evaluate on training sample ──
+    # ── Evaluate on one sample ──
     sample_idx = len(ds) // 2
     item = ds[sample_idx]
     raw_item = ds_raw[sample_idx]
@@ -112,11 +114,7 @@ def main():
         goal_emb = out["emb"][:, -1:]
         info = {"pixels": batch["pixels"][:, :ctx_len]}
 
-    # History actions
-    raw_act = 2
-    fs = wm.action_encoder.patch_embed.in_channels // raw_act
-    hist_raw = batch["action"][:, :ctx_len]  # (1, 3, 10)
-    hist_actions = hist_raw.reshape(1, ctx_len, fs, raw_act).mean(2)  # (1, 3, 2)
+    hist_actions = batch["action"][:, :ctx_len].reshape(1, ctx_len, fs, raw_act).mean(2)
 
     actions = planner(ctx_emb[:, -1:], goal_emb).detach()
     pred_embs, _ = planner_rollout(wm, actions, info, history_size=ctx_len,
@@ -126,14 +124,13 @@ def main():
     best_idx = costs.argmin().item()
     best_action = actions[0, best_idx].cpu().numpy()[0]
 
-    # GT action for comparison
+    # GT
     gt_raw = batch["action"][:, ctx_len:]
-    gt_action = gt_raw.reshape(1, 1, fs, raw_act).mean(2)  # (1, 1, 2)
+    gt_action = gt_raw.reshape(1, 1, fs, raw_act).mean(2)
     gt_actions_t = gt_action.unsqueeze(1).expand(-1, N, -1, -1).float().cuda()
     gt_embs, _ = planner_rollout(wm, gt_actions_t, info, history_size=ctx_len,
                                    hist_actions=hist_actions, goal_emb=goal_emb)
     gt_cost = (gt_embs - goal).pow(2).mean(dim=-1)[0, 0].item()
-
     natural_dist = (ctx_emb - goal_emb).pow(2).mean().item()
 
     print(f"\n{'='*50}")
@@ -141,48 +138,40 @@ def main():
     print(f"GT action cost:     {gt_cost:.6f}")
     print(f"Natural ctx→goal:   {natural_dist:.6f}")
     print(f"Planner action:     {best_action}")
-    print(f"GT action:          {gt_action}")
-
-    # ── Simulation ──
-    env = gym.make("swm/PushT-v1", max_episode_steps=200, render_mode="rgb_array")
-    frames = []
-    env.reset()
-    frames.append(env.render())
-    a = best_action.astype(np.float32)
-    a = np.clip(a, -1, 1)
-    for _ in range(5):
-        obs, _, terminated, truncated, _ = env.step(a)
-        frames.append(env.render())
-        if terminated or truncated:
-            break
-    env.close()
+    print(f"GT action:          {gt_action[0, 0].cpu().numpy()}")
 
     # ── Visualization ──
-    fig, axes = plt.subplots(2, 3, figsize=(14, 8))
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
 
-    # Row 1: context + goal images
+    # Row 1: context frames from the dataset episode
     for i in range(3):
         img = raw_item["pixels"][i].permute(1, 2, 0).numpy().astype(np.uint8)
         axes[0, i].imshow(img)
         axes[0, i].set_title(f"Context frame {i}")
         axes[0, i].axis("off")
 
-    # Goal image
-    axes[0, 0].set_title("Context 0")
-    axes[0, 1].set_title("Context 1")
-    axes[0, 2].set_title("Context 2")
-
-    # Row 2: goal + sim start/end + loss curve
+    # Goal image from the SAME episode
     axes[1, 0].imshow(raw_item["pixels"][3].permute(1, 2, 0).numpy().astype(np.uint8))
-    gt_display = gt_action[0, 0].cpu().numpy()
-    axes[1, 0].set_title(f"Goal (frame 3)\nPlanner: {np.round(best_action, 3)}\nGT: {np.round(gt_display, 3)}")
+    gt_np = gt_action[0, 0].cpu().numpy()
+    axes[1, 0].set_title(f"Goal (frame 3 — same episode)\n"
+                         f"Planner: {np.round(best_action, 3)}\n"
+                         f"GT:      {np.round(gt_np, 3)}")
     axes[1, 0].axis("off")
 
-    axes[1, 1].imshow(frames[0])
-    axes[1, 1].imshow(frames[-1], alpha=0.5)
-    axes[1, 1].set_title(f"Sim: start + end overlay\nAction: {best_action.round(3)}")
-    axes[1, 1].axis("off")
+    # Action comparison
+    ax = axes[1, 1]
+    ax.bar([0, 1], best_action, 0.35, color='#58a6ff', label='Planner', alpha=0.85)
+    ax.bar([0.35, 1.35], gt_np, 0.35, color='gray', label='GT', alpha=0.85)
+    ax.set_xticks([0.175, 1.175])
+    ax.set_xticklabels(['Action X', 'Action Y'])
+    ax.set_ylabel('Action value')
+    ax.set_title(f'Action: planner (blue) vs GT (gray)\n'
+                 f'Planner cost={costs[best_idx].item():.4f}  '
+                 f'GT cost={gt_cost:.4f}')
+    ax.legend(fontsize=8)
+    ax.axhline(y=0, color='gray', linestyle=':', alpha=0.3)
 
+    # Loss curve
     axes[1, 2].plot(loss_history, color="#3fb950", linewidth=1.5)
     axes[1, 2].axhline(y=gt_cost, color="gray", linestyle="--",
                        label=f"GT cost={gt_cost:.4f}")
@@ -194,20 +183,13 @@ def main():
 
     plt.suptitle(f"Planner T=1 Overfit (1 PushT episode, {n_epochs} epochs)\n"
                  f"cost: planner={costs[best_idx].item():.4f}  gt={gt_cost:.4f}  "
-                 f"natural={natural_dist:.4f}",
+                 f"natural={natural_dist:.4f}  |  ",
                  fontsize=12, y=1.02)
     plt.tight_layout()
     out = OUT / "planner_t1_overfit.png"
     plt.savefig(out, dpi=120, bbox_inches="tight")
     print(f"Saved: {out}")
-
-    # GIF
-    gif_out = OUT / "planner_t1_sim.gif"
-    imageio.mimsave(gif_out, frames, fps=5, loop=0)
-    print(f"Saved: {gif_out}")
-
-    # ── Print directory ──
-    print(f"\nAll visualizations in: {OUT}/")
+    print(f"All viz: {OUT}/")
 
 
 if __name__ == "__main__":
