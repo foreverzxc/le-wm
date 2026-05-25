@@ -176,14 +176,31 @@ def main():
     obs, _, _, _, _ = env.step(np.zeros(2, dtype=np.float32))
     frames.append(env.render())
 
+    # Planner actions: each repeated frameskip=5 times
     for t in range(T):
         a = best_actions[t].astype(np.float32)
         a = np.clip(a, -1, 1)
-        for _ in range(5):
+        for _ in range(fs):
             obs, _, terminated, truncated, _ = env.step(a)
             frames.append(env.render())
             if terminated or truncated:
                 break
+        if terminated or truncated:
+            break
+    env.close()
+
+    # Also run GT simulation (all individual actions)
+    env = gym.make("swm/PushT-v1", max_episode_steps=200, render_mode="rgb_array")
+    env.reset()
+    set_env_state(env, init_state)
+    gt_frames = []
+    obs, _, _, _, _ = env.step(np.zeros(2, dtype=np.float32))
+    gt_frames.append(env.render())
+    gt_actions_full = gt_raw.reshape(1, T, fs, raw_act)[0].cpu().numpy()  # (T, 5, 2)
+    for a in gt_actions_full.reshape(-1, raw_act):
+        a = np.clip(a.astype(np.float32), -1, 1)
+        obs, _, terminated, truncated, _ = env.step(a)
+        gt_frames.append(env.render())
         if terminated or truncated:
             break
     env.close()
@@ -245,10 +262,13 @@ def main():
     plt.savefig(out, dpi=120, bbox_inches="tight")
     print(f"Saved: {out}")
 
-    # GIF
+    # GIFs
     gif_out = OUT / "planner_t5_sim.gif"
     imageio.mimsave(gif_out, frames, fps=6, loop=0)
     print(f"Saved: {gif_out}  ({len(frames)} frames)")
+    gt_gif_out = OUT / "planner_t5_gt_sim.gif"
+    imageio.mimsave(gt_gif_out, gt_frames, fps=6, loop=0)
+    print(f"Saved: {gt_gif_out}  ({len(gt_frames)} frames)")
 
     print(f"\nAll viz: {OUT}/")
 
