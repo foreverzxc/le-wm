@@ -28,7 +28,7 @@ seed: 3072
 img_size: 224
 
 trainer:
-  default_root_dir: output
+  default_root_dir: output/lightning
   max_epochs: 100
   devices: auto
   accelerator: gpu
