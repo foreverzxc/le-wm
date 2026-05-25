@@ -58,28 +58,11 @@ def get_state_from_dataset(ds, ep_idx=0, step=0):
 
 
 def set_env_state(env, state):
-    """Try to set PushT env state. Handles version differences."""
-    uw = env.unwrapped
-    # Try different API versions
-    if hasattr(uw, '_set_state'):
-        try:
-            uw._set_state(state)
-            return True
-        except Exception:
-            pass
-    # Fallback: set via physics directly
-    if hasattr(uw, 'space') and hasattr(uw, 'block'):
-        try:
-            pos_agent = state[:2].tolist()
-            pos_block = state[2:4].tolist()
-            rot_block = float(state[4])
-            uw.block.position = pos_block
-            uw.block.angle = rot_block
-            uw.space.step(uw.dt)
-            return True
-        except Exception:
-            pass
-    return False
+    """Set PushT env state. Must call env.reset() first."""
+    if state.ndim > 1:
+        state = state[0]
+    env.unwrapped._set_state(state)
+    return True
 
 
 def main():
