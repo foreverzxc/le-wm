@@ -43,6 +43,7 @@ class PlannerDecoder(nn.Module):
         mlp_dim: int = 1024,
         horizon: int = 5,
         action_dim: int = 2,
+        action_range: float = 1.0,
         dropout: float = 0.1,
     ):
         super().__init__()
@@ -50,6 +51,7 @@ class PlannerDecoder(nn.Module):
         self.horizon = horizon
         self.action_dim = action_dim
         self.embed_dim = embed_dim
+        self.action_range = action_range
 
         # Learnable query tokens
         self.query_embed = nn.Parameter(torch.randn(1, num_queries, embed_dim) * 0.02)
@@ -105,6 +107,9 @@ class PlannerDecoder(nn.Module):
         # Predict action series per query
         actions = self.action_head(out)  # (B, N, horizon * action_dim)
         actions = actions.reshape(B, self.num_queries, self.horizon, self.action_dim)
+        # No tanh — raw actions, constrained by L2 penalty during training.
+        # Clip to [-action_range, action_range] only at inference / simulation.
+        actions = actions * self.action_range
 
         return actions
 

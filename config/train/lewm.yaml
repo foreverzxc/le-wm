@@ -68,5 +68,6 @@ planner:
   mlp_dim: 1024                  # FFN hidden dim
   horizon: 8                     # output series length T (action₁, ..., action_T)
   action_dim: null               # raw action dim (null = auto-detect from WM)
+  action_range: 1.0              # max action magnitude (tanh scaled)
   dropout: 0.1
   diversity_weight: 0.1          # λ for DETR-style diversity loss

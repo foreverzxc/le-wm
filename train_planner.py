@@ -181,6 +181,7 @@ def run(cfg):
         mlp_dim=cfg.planner.mlp_dim,
         horizon=cfg.planner.horizon,
         action_dim=action_dim,
+        action_range=cfg.planner.get("action_range", 1.0),
         dropout=cfg.planner.dropout,
     )
 
