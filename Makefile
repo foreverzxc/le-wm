@@ -129,6 +129,11 @@ viz-overfit: logs/infer
 	PYTHONUNBUFFERED=1 $(VENV) scripts/viz_overfit.py \
 		2>&1 | tee $(LOG_INFER)_viz_overfit.log
 
+# ── Planner visualisation ─────────────────────────────────────────────
+.PHONY: viz-planner
+viz-planner:
+	PYTHONUNBUFFERED=1 $(VENV) scripts/viz_planner_actions.py
+
 # ── Offline eval ──────────────────────────────────────────────────────
 .PHONY: eval-overfit
 eval-overfit: logs/infer

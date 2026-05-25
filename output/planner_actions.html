@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Planner Action Visualization</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--muted:#8b949e;--green:#3fb950;--red:#f85149;--blue:#58a6ff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text)}
+.container{max-width:1400px;margin:0 auto;padding:20px}
+h1{font-size:1.6rem;margin-bottom:4px}
+.sub{color:var(--muted);margin-bottom:20px;font-size:.9rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(650px,1fr));gap:16px}
+.chart{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:8px 0;font-size:.8rem}
+.legend-item{display:flex;align-items:center;gap:4px}
+.legend-swatch{width:14px;height:14px;border-radius:3px}
+</style>
+</head>
+<body><div class="container">
+<h1>Planner Action Visualization</h1>
+<p class="sub">8 queries × 5 steps each, across 8 starting positions in a PushT episode.
+<span style="color:var(--green)">★ Best query</span> (lowest MSE to goal) ·
+<span style="color:var(--muted)">● Other queries</span> ·
+<span style="color:var(--red)">■ Ground truth</span></p>
+<div class="grid" id="grid"></div>
+</div>
+<script>
+fetch('planner_actions_data.json').then(r=>r.json()).then(data=>{
+  const samples = [...new Set(data.map(d=>d.sample))];
+  const grid = document.getElementById('grid');
+
+  samples.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'chart';
+    div.id = 'chart_'+s;
+    grid.appendChild(div);
+
+    const traces = [];
+    const colors = ['#58a6ff','#3fb950','#d2991d','#f85149','#a371f7','#79c0ff','#7ee787','#ffa657'];
+
+    const qs = data.filter(d=>d.sample===s);
+    const bestCost = Math.min(...qs.map(q=>q.cost));
+    const maxCost = Math.max(...qs.map(q=>q.cost));
+
+    qs.forEach(q => {
+      const isBest = q.best;
+      traces.push({
+        x: q.x, y: q.y,
+        type: 'scatter', mode: 'lines+markers',
+        name: `Q${q.query}${isBest?' ★':''} (cost=${q.cost.toFixed(4)})`,
+        line: { width: isBest ? 3 : 1, color: colors[q.query] },
+        marker: { size: isBest ? 8 : 4,
+          color: q.x.map((_,i)=>i===0?colors[q.query]:i===q.x.length-1?colors[q.query]:colors[q.query]),
+          symbol: q.x.map((_,i)=>i===0?'square':i===q.x.length-1?'star':'circle'),
+          line: { width: isBest ? 2 : 0.5, color: 'white' }
+        },
+        opacity: isBest ? 1 : 0.4,
+        hovertemplate: `Q${q.query}${isBest?' ★':''}<br>x=%{x:.4f} y=%{y:.4f}<br>cost=${q.cost.toFixed(4)}<extra></extra>`
+      });
+    });
+
+    Plotly.newPlot('chart_'+s, traces, {
+      paper_bgcolor: '#161b22', plot_bgcolor: '#161b22',
+      font: { color: '#c9d1d9', size: 11 },
+      xaxis: { title: 'Cumulative Action X', gridcolor: '#30363d', zeroline: true, zerolinecolor: '#30363d' },
+      yaxis: { title: 'Cumulative Action Y', gridcolor: '#30363d', zeroline: true, zerolinecolor: '#30363d' },
+      title: { text: `Sample ${s} &nbsp;|&nbsp; best=Q${qs.find(q=>q.best).query} (${bestCost.toFixed(4)}) &nbsp;|&nbsp; range [${bestCost.toFixed(4)}, ${maxCost.toFixed(4)}]`,
+        font: { size: 12, color: '#c9d1d9' } },
+      legend: { x: 1.02, y: 1, font: { size: 9 }, bgcolor: '#0d1117', bordercolor: '#30363d' },
+      margin: { t: 40, r: 150, l: 50, b: 40 },
+      height: 380,
+    }, { displayModeBar: false, responsive: true });
+  });
+});
+</script>
+</body></html>
