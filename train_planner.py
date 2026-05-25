@@ -93,10 +93,18 @@ def planner_forward(self, batch, stage, cfg):
     history_ctx = ctx_emb[:, :cfg.wm.history_size]
     actions = self.model(history_ctx[:, -1:], goal_emb)  # (B, N, T, A)
 
-    # Rollout through frozen WM (no no_grad — gradient flows through to actions)
-    info = {"pixels": ctx_batch["pixels"][:, :cfg.wm.history_size]}
-    pred_embs, goal_emb = planner_rollout(
-        self.wm, actions, info, history_size=cfg.wm.history_size
+    # Extract real historical actions from batch
+    hs = cfg.wm.history_size
+    raw_act = actions.shape[-1]
+    fs = self.wm.action_encoder.patch_embed.in_channels // raw_act
+    hist_actions = ctx_batch["action"][:, :hs]  # (B, HS, fs * raw_dim)
+    hist_actions = hist_actions.reshape(B, hs, fs, raw_act).mean(2)  # (B, HS, raw_dim)
+
+    # Rollout through frozen WM
+    info = {"pixels": ctx_batch["pixels"][:, :hs]}
+    pred_embs, _ = planner_rollout(
+        self.wm, actions, info, history_size=hs,
+        hist_actions=hist_actions, goal_emb=goal_emb,
     )
 
     # Compute loss
@@ -128,6 +136,16 @@ def run(cfg):
 
     img_proc = get_img_preprocessor("pixels", "pixels", cfg.img_size)
     dataset.transform = img_proc
+
+    # Optional: limit to first N episodes for overfitting tests
+    max_ep = cfg.planner.get("max_episodes", 0)
+    base_dataset = dataset  # keep reference for frameskip etc.
+    if max_ep and max_ep > 0:
+        indices = [i for i in range(len(dataset))
+                   if dataset.clip_indices[i][0] < max_ep]
+        dataset = torch.utils.data.Subset(dataset, indices)
+        dataset.frameskip = base_dataset.frameskip  # propagate key attrs
+        dataset.num_steps = base_dataset.num_steps
 
     rnd_gen = torch.Generator().manual_seed(cfg.seed)
     train_set, val_set = spt.data.random_split(
