@@ -151,3 +151,52 @@ lr=5e-5, SIGReg λ=0.09, grad_clip=1.0, batch=2:
 - 可增大 batch_size 减少 epoch 时间
 - Epoch 2 val_loss 回升可能需要 weighted sampling 平衡数据集
 
+---
+
+## 6. 预训练模型在 LIBERO 上的视觉惊讶度
+
+**实验日期**: 2026-05-22
+**方法**: 4 个预训练模型用零 action 在 LIBERO-10（10 episodes）上计算纯视觉 surprise
+
+| 排名 | 模型 | Surprise | 分析 |
+|------|------|----------|------|
+| 1 | **Pusht** | 0.0323 | 最低 — 2D 俯视编码器泛化最好 |
+| 2 | Cube | 0.0537 | 次低 — 3D 物体操作有一定迁移 |
+| 3 | Reacher | 0.2458 | 较高 — 机械臂场景与厨房差异大 |
+| 4 | TwoRooms | 5.6182 | 最高 — embedding 尺度不兼容 |
+
+- Pusht 模型编码器泛化能力最强，可能因其训练数据量最大（18.7K episodes）
+- TwoRooms 模型 surprise 异常高是其 embedding 空间尺度不同，不是真正的视觉 domain gap
+
+---
+
+## 7. 代码修改与 Bug 修复记录
+
+### eval.py
+- `swm.wm.utils.load_pretrained()` 不存在 → 自实现 `load_model_from_checkpoint()`
+- `world.evaluate()` 参数签名不匹配 → 恢复 `evaluate_from_dataset()`
+- 修正 `goal_offset` → `goal_offset_steps`, `video` → `video_path`
+
+### train.py
+- `swm.data.load_dataset()` 不存在 → 改用 `swm.data.HDF5Dataset` + 扩展名剥离
+- 添加 `dataset_class` 分支支持 LIBERO Hydra 实例化
+- `get_cache_dir(sub_folder=)` API 不兼容 → 手动拼接路径
+- `keys_to_load` 使用 `.get()` 安全访问，兼容跨数据集配置
+
+### jepa.py
+- `get_cost()` 中 goal pixels 缺时间维度 → 添加 `unsqueeze(1)` 修复
+
+### utils.py
+- `SaveCkptCallback` 中 `save_pretrained()` 不存在 → 改用 `torch.save()` + `OmegaConf.to_container(resolve=True)`
+
+### libero_data.py
+- 添加 HDF5 文件句柄缓存（`_file_handles`），避免每次 `__getitem__` 重新打开文件
+- 添加 `max_episodes` 参数用于快速过拟合测试
+- `get_column_normalizer` 使用 `load_episode` 采样代替全量扫描
+
+### 新增模块
+- `multidata.py` — MultiDomainDataset，跨数据集训练
+- `scripts/batch_surprise.py` — 跨数据集惊讶度批量测试（With/Without action 双表）
+- `scripts/surprise.py` — 单轨迹惊讶度可视化
+- `Makefile` — 所有实验的 make 命令
+
