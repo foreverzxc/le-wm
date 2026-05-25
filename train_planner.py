@@ -78,23 +78,22 @@ def planner_forward(self, batch, stage, cfg):
     ctx_batch = {k: v for k, v in batch.items() if not k.startswith("goal")}
     goal_batch = {k: v for k, v in batch.items() if k.startswith("goal")}
 
-    # Encode context and goal (frozen WM)
+    # Encode context and goal (frozen WM, no grad — just starting state)
     with torch.no_grad():
         ctx_out = self.wm.encode(ctx_batch)
         ctx_emb = ctx_out["emb"]  # (B, T, D)
 
-        # Goal: use the last frame of ctx as goal if no separate goal
         goal_pixels = goal_batch.get("goal_pixels", ctx_batch["pixels"][:, -1:])
         if goal_pixels.ndim == 4:
             goal_pixels = goal_pixels.unsqueeze(1)
         goal_out = self.wm.encode({"pixels": goal_pixels})
         goal_emb = goal_out["emb"][:, -1:]  # (B, 1, D)
 
-    # Planner produces N action candidates
-    history_ctx = ctx_emb[:, :cfg.wm.history_size]  # (B, HS, D)
+    # Planner produces N action candidates (has grad)
+    history_ctx = ctx_emb[:, :cfg.wm.history_size]
     actions = self.planner(history_ctx[:, -1:], goal_emb)  # (B, N, T, A)
 
-    # Rollout through frozen WM
+    # Rollout through frozen WM (no no_grad — gradient flows through to actions)
     info = {"pixels": ctx_batch["pixels"][:, :cfg.wm.history_size]}
     pred_embs, goal_emb = planner_rollout(
         self.wm, actions, info, history_size=cfg.wm.history_size

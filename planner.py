@@ -171,24 +171,30 @@ class PlannerLoss(nn.Module):
 def planner_rollout(wm, actions, info_dict, history_size=3):
     """Run WM rollout using planner actions across N candidates.
 
+    WM parameters have ``requires_grad=False`` so they stay frozen, but the
+    computational graph is preserved — gradients flow through the WM into
+    ``actions`` and back to the planner.
+
     Args:
-        wm: frozen JEPA model (encoder + predictor + action_encoder)
-        actions: (B, N, T, raw_action_dim)  from planner
+        wm: frozen JEPA model
+        actions: (B, N, T, raw_action_dim)  from planner (has grad)
         info_dict: dict with ``pixels`` (B, T, C, H, W) and optional ``goal``
         history_size: WM context length
 
     Returns:
-        pred_embs: (B, N, D)  final step embedding for each candidate
+        pred_embs: (B, N, D)  final-step embedding for each candidate
+        goal_emb:  (B, 1, D)
     """
     B, N, T, _ = actions.shape
 
-    # Encode context
+    # Context encoding: no_grad is OK here — it's just the starting state.
+    # The planner does NOT need to adjust the encoder, only the actions.
     with torch.no_grad():
         out = wm.encode({k: v for k, v in info_dict.items()
                           if torch.is_tensor(v) and k != "goal"})
         ctx_emb = out["emb"]  # (B, T_ctx, D)
 
-        # Goal embedding
+        # Goal embedding (also frozen)
         if "goal" in info_dict:
             goal_img = info_dict["goal"]
             if goal_img.ndim == 4:
@@ -198,30 +204,35 @@ def planner_rollout(wm, actions, info_dict, history_size=3):
         else:
             goal_emb = ctx_emb[:, -1:]
 
-        # Expand embeddings for N candidates
-        ctx_emb_exp = ctx_emb.unsqueeze(1).expand(-1, N, -1, -1)  # (B, N, T_ctx, D)
-        emb = rearrange(ctx_emb_exp, "b n t d -> (b n) t d")
-        emb = emb.clone()
+    # ── Rollout: NO no_grad here — gradient must flow through! ──
+    HS = history_size
+    raw_act_dim = actions.shape[-1]
+    fs = wm.action_encoder.patch_embed.in_channels // raw_act_dim  # frameskip
 
-        # Rollout
-        HS = history_size
-        act_raw = rearrange(actions, "b n t d -> (b n) t d")
+    # Expand raw actions: (B,N,T,2) → (B,N,T,fs*2) via repeat_interleave
+    act_expanded = actions.repeat_interleave(fs, dim=-1)  # (B, N, T, fs * raw_dim)
 
-        for t in range(T):
-            act_full = torch.cat([
-                torch.zeros(B * N, HS, actions.shape[-1], device=actions.device),
-                act_raw,
-            ], dim=1)
-            act_emb = wm.action_encoder(act_full[:, :HS + t + 1])
-            emb_trunc = emb[:, -(HS + t):]
-            act_trunc = act_emb[:, -(HS + t):]
+    # Starting embeddings: take last HS from context
+    ctx_emb_exp = ctx_emb.unsqueeze(1).expand(-1, N, -1, -1)
+    emb = rearrange(ctx_emb_exp, "b n t d -> (b n) t d")[:, -HS:].clone()  # (B*N, HS, D)
+    act_flat = rearrange(act_expanded, "b n t d -> (b n) t d")  # (B*N, T, D_act)
 
-            # Predict next step
-            pred = wm.predict(emb_trunc[:, :HS], act_trunc[:, :HS])[:, -1:]
-            emb = torch.cat([emb, pred], dim=1)
+    # Build history action buffer (zero-padded initial actions)
+    hist_act = torch.zeros(B * N, HS, act_flat.shape[-1], device=actions.device)
 
-        # Take the final step embedding
-        final_emb = emb[:, -1]  # (B*N, D)
-        pred_embs = rearrange(final_emb, "(b n) d -> b n d", b=B, n=N)
+    # Autoregressive rollout: each step uses last HS (emb, act) pairs
+    for t in range(T):
+        # Current planner action
+        cur_act = act_flat[:, t:t + 1]  # (B*N, 1, D_act)
+        # Slide history: drop oldest, append current
+        hist_act = torch.cat([hist_act[:, 1:], cur_act], dim=1)  # (B*N, HS, D_act)
+
+        # Encode action history and predict
+        act_emb = wm.action_encoder(hist_act)  # (B*N, HS, D)
+        pred = wm.predict(emb[:, -HS:], act_emb)[:, -1:]  # (B*N, 1, D)
+        emb = torch.cat([emb, pred], dim=1)
+
+    final_emb = emb[:, -1]  # (B*N, D)
+    pred_embs = rearrange(final_emb, "(b n) d -> b n d", b=B, n=N)
 
     return pred_embs, goal_emb
