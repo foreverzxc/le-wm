@@ -91,7 +91,7 @@ def planner_forward(self, batch, stage, cfg):
 
     # Planner produces N action candidates (has grad)
     history_ctx = ctx_emb[:, :cfg.wm.history_size]
-    actions = self.planner(history_ctx[:, -1:], goal_emb)  # (B, N, T, A)
+    actions = self.model(history_ctx[:, -1:], goal_emb)  # (B, N, T, A)
 
     # Rollout through frozen WM (no no_grad — gradient flows through to actions)
     info = {"pixels": ctx_batch["pixels"][:, :cfg.wm.history_size]}
@@ -106,7 +106,7 @@ def planner_forward(self, batch, stage, cfg):
         {f"{stage}/{k}": v for k, v in loss_info.items()},
         on_step=True, sync_dist=True,
     )
-    return total_loss
+    return {"loss": total_loss}
 
 
 @hydra.main(version_base=None, config_path="./config/train", config_name="lewm")
@@ -174,7 +174,7 @@ def run(cfg):
 
     optimizers = {
         "planner_opt": {
-            "modules": "planner",
+            "modules": "model",
             "optimizer": dict(cfg.optimizer),
             "scheduler": {"type": "LinearWarmupCosineAnnealingLR"},
             "interval": "epoch",

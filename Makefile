@@ -48,17 +48,18 @@ cross4: logs/train
 		trainer.gradient_clip_val=0.5 \
 		2>&1 | tee $(LOG_TRAIN)_cross4.log
 
-# ── Planner (on frozen WM) ───────────────────────────────────────────
+# ── Planner (train on frozen WM) ─────────────────────────────────────
 .PHONY: planner
 planner: logs/train
 	PYTHONUNBUFFERED=1 $(VENV) train_planner.py \
 		data=pusht img_size=224 \
 		trainer.max_epochs=30 \
-		loader.batch_size=8 loader.num_workers=0 \
+		loader.batch_size=4 loader.num_workers=0 \
 		loader.prefetch_factor=null loader.persistent_workers=false \
 		optimizer.lr=1e-4 \
 		planner.ckpt=pusht \
 		planner.horizon=5 planner.num_queries=8 \
+		planner.num_layers=3 \
 		planner.diversity_weight=0.1 \
 		2>&1 | tee $(LOG_TRAIN)_planner.log
 
@@ -185,12 +186,14 @@ help:
 	@echo "    make overfit        Overfit on 1 LIBERO episode"
 	@echo "    make libero-small   50 episodes, convergence test"
 	@echo "    make libero-10      Full LIBERO-10 (500 episodes)"
+	@echo "    make planner        Train planner on frozen PushT WM"
 	@echo "    make pusht          PushT benchmark (1 epoch timing)"
 	@echo "    make pusht-full     PushT full training (50 epochs)"
 	@echo "    make tworoom        TwoRooms benchmark"
 	@echo "    make dmc            DMC / Reacher benchmark"
 	@echo ""
 	@echo "  Inference & Eval:"
+	@echo "    make batch-surprise                 4×4 cross-dataset surprise"
 	@echo "    make surprise DATASET=libero EP=0    Surprise along trajectory"
 	@echo "    make viz-overfit                     Embedding visualization"
 	@echo "    make eval-overfit                    Offline MPC eval"
