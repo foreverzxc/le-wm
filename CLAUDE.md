@@ -1,91 +1,124 @@
 # CLAUDE.md
 
-LeWorldModel (LeWM) — JEPA world model learning end-to-end from pixels. ~18M params, single GPU.
+LeWorldModel (LeWM) — JEPA world model + Planner, end-to-end from pixels. ~18M params, single GPU.
 
 ## Quick Start
 
 ```bash
-# All experiments via Makefile
 make help           # List all targets
-make overfit        # 1-episode sanity check (30s init, 1min/ep)
-make libero-small   # 50 episodes, fast convergence test
-make libero-10      # Full LIBERO-10 (500 episodes)
-make pusht          # PushT benchmark
 make info           # GPU + dataset status
-
-# Manual training
-PYTHONUNBUFFERED=1 python train.py data=pusht
+make list-logs      # Show experiment logs
 ```
 
 ## Project Structure
 
 ```
 le-wm/
-├── train.py              # Training entry point (Hydra)
-├── eval.py               # Evaluation entry point
-├── jepa.py               # JEPA model (encode, predict, rollout, get_cost)
-├── module.py             # Building blocks (SIGReg, ARPredictor, Embedder, MLP)
-├── utils.py              # Image preprocessing, ZScoreNormalizer, SaveCkptCallback
-├── libero_data.py        # LIBERO HDF5 adapter (file handle caching)
-├── Makefile              # Experiment launchers
-├── config/
-│   └── train/
-│       ├── lewm.yaml     # Main training config
-│       ├── model/lewm.yaml
-│       ├── data/*.yaml   # Per-dataset configs (pusht, libero_10, libero_overfit, …)
-│       └── launcher/local.yaml
-├── scripts/              # Helper scripts
-│   ├── viz_overfit.py    # Embedding visualization
-│   └── eval_overfit.py   # Offline MPC evaluation
-└── output/               # Generated artifacts (reports, plots, rollouts)
-    ├── report_*.html
-    └── rollouts/
+├── train.py, train_planner.py     # 训练入口 (WM / Planner)
+├── eval.py                        # 评估入口 (MPC planning)
+├── jepa.py                        # JEPA WM (encode, predict, rollout, get_cost)
+├── module.py                      # SIGReg, ARPredictor, Embedder, MLP, Transformer
+├── planner.py                     # PlannerDecoder + PlannerLoss + planner_rollout
+├── utils.py                       # Image preprocessing, ZScoreNormalizer, SaveCkptCallback
+├── libero_data.py                 # LIBERO HDF5 adapter (file handle caching)
+├── multidata.py                   # MultiDomainDataset (cross-dataset training)
+├── Makefile                       # All experiment launchers
+├── config/train/
+│   ├── lewm.yaml                  # Main config (WM + Planner params)
+│   ├── model/lewm.yaml            # JEPA model definition
+│   └── data/*.yaml                # Per-dataset configs
+├── scripts/                       # Experiment & visualization scripts
+│   ├── train_and_compare.py       # Train planner + 3-way comparison GIF
+│   ├── planner_overfit_t1.py      # T=1 planner overfit
+│   ├── planner_overfit_t5.py      # T=5 planner overfit
+│   ├── compare_actions.py         # Planner vs GT action GIF comparison
+│   ├── sim_planner_action.py      # Planner action simulation in PushT env
+│   ├── gt_rollout_error.py        # WM pred_loss vs rollout cost analysis
+│   ├── gt_sim_vs_dataset.py       # GT sim vs dataset pixels GIF
+│   ├── surprise.py                # Single trajectory surprise
+│   ├── batch_surprise.py          # Cross-dataset surprise matrix
+│   ├── viz_overfit.py             # WM embedding visualization
+│   ├── viz_planner_actions.py     # Planner action space visualization
+│   ├── debug_state_match.py       # Debug: state matching accuracy
+│   └── debug_block_position.py    # Debug: block position tracking
+└── output/
+    ├── CONCLUSIONS.md             # Verified experimental findings
+    ├── viz/                       # All generated visualizations
+    │   └── INDEX.html             # Visual index page
+    └── lightning/                 # PyTorch Lightning logs (auto-generated)
 ```
-
-## Key Hyperparameters (LIBERO multi-task)
-
-| Param | Value | Note |
-|-------|-------|------|
-| lr | 2e-5 | 5e-5 caused gradient spikes on multi-task |
-| SIGReg λ | 0.05 | Lower than default 0.09, allows better fitting |
-| grad_clip | 0.5 | Tighter than default 1.0 |
-| batch_size | 4 | Minimum for stable multi-task gradients |
-| img_size | 128 | LIBERO native resolution |
-
-## Known Checkpoints
-
-`~/.stable_worldmodel/checkpoints/README.md` — all checkpoints documented.
-
-- `lewm_weights_epoch_6.pt` — Best LIBERO-50 model (fit=1.70e-5, val=3.27e-5)
-- `lewm_weights_epoch_9.pt` — Overfit on 1 episode (fit=7.4e-5)
-
-## Performance Notes
-
-- **RTX 3050 6GB**: batch≤4 at 224×224, batch≤8 at 128×128. Use bf16 AMP always.
-- **num_workers=0** for LIBERO (HDF5 not fork-safe), **num_workers=2** for PushT.
-- **Prefetch/persistent workers** must be disabled when num_workers=0.
-- **PushT**: 467K samples/ep, ~8 min/ep at batch=32, ~2 min/ep at batch=128.
-- **LIBERO I/O bottleneck**: HDF5 random access limits speed. File handle caching helps. For full 500-ep training, consider pre-loading to memory or Lance format.
-
-## Output Directory Policy
-
-All generated files go to `output/` or `logs/`. Root directory stays clean:
-- `output/` — Lightning logs, environment dumps, checkpoints, Hydra runs, reports
-- `logs/` — Tee logs from manual runs (`/tmp/` also acceptable for temp logs)
-- Hydra and Lightning `default_root_dir` are configured to use `output/`
 
 ## Record Locations
 
-| What | Where | Example |
-|------|-------|---------|
-| Experiment logs (training) | `logs/train/` | `logs/train/20260522_163000_pusht.log` |
-| Experiment logs (inference) | `logs/infer/` | `logs/infer/20260522_170000_surprise_pusht_ep0.log` |
-| HTML reports | `output/` | `output/report_libero10.html` |
-| Plots & figures | `output/` | `output/surprise_pusht_ep0.png` |
-| **Conclusions & findings** | `output/CONCLUSIONS.md` | Verified experimental results |
-| Model checkpoints | `~/.stable_worldmodel/checkpoints/` | `lewm_weights_epoch_6.pt` |
-| Memory (persistent) | `~/.claude/projects/.../memory/` | Cross-session context |
-| Project configs | `config/` | `config/train/lewm.yaml` |
+| What | Where |
+|------|-------|
+| Experiment logs (training) | `logs/train/YYYYMMDD_HHMMSS_<name>.log` |
+| Experiment logs (inference) | `logs/infer/YYYYMMDD_HHMMSS_<name>.log` |
+| Visualizations & plots | `output/viz/` |
+| **Conclusions & findings** | `output/CONCLUSIONS.md` |
+| Model checkpoints | `~/.stable_worldmodel/checkpoints/` |
+| Checkpoint catalog | `~/.stable_worldmodel/checkpoints/README.md` |
+| Pretrained weights | `~/.stable_worldmodel/<name>_weights.pt` |
+| Memory (cross-session) | `~/.claude/projects/.../memory/` |
+| Config files | `config/train/` |
 
-**Key distinction**: `logs/` = raw experiment output. `output/` = processed artifacts + conclusions.
-`CONCLUSIONS.md` = curated findings, not raw logs. Update it when experiments yield clear results.
+## Key Design Decisions
+
+### Planner Architecture
+- **Perceiver-style decoder**: N learned queries, self-attention + cross-attention to [goal_emb, ctx_emb]
+- **Best-of-N loss**: only the query with lowest rollout cost gets gradient
+- **DETR-style diversity**: cosine similarity penalty pushes non-best queries away from best
+- **Action constraint**: clamp(actions, -1, 1) + L2 smoothness penalty (weight ~2.0). DO NOT use tanh — gradient dies at saturation
+- **Small init**: scale action_head output weights by 0.1, zero bias
+- **Real action history**: pass dataset actions as `hist_actions` to rollout, NOT zeros
+- **Explicit goal**: pass `goal_emb` to `planner_rollout`, NOT derived from context
+
+### Planner Rollout Gradient Flow
+- WM params have `requires_grad=False` — never updated
+- Context encoding uses `torch.no_grad()` — saves memory
+- **Rollout loop does NOT use no_grad** — gradient flows through action_encoder → predictor → pred_embs → loss → actions → planner
+- This is CORRECT: gradient flows TO planner but NOT to WM
+
+### WM Training Hyperparameters
+- lr=2e-5 (5e-5 causes gradient spikes on multi-task data)
+- SIGReg λ=0.05 (lower than default 0.09)
+- grad_clip=0.5 (tighter than default 1.0)
+- batch≥4 for multi-task stability
+
+### GT Action Simulation
+- Dataset stores actions as `(num_steps, frameskip * raw_dim)` in chronological order
+- GT simulation: use ALL individual actions `(T, frameskip, raw_dim)`, NOT averaged
+- `_set_state` works after `env.reset()` — sets agent position, block position, angle
+- PushT physics simulation has inherent irreproducibility: same state + actions produce different agent trajectories (~90px divergence after 5 steps)
+- Block position stays accurate (Δ<3px) — good enough for task evaluation
+
+### LiberoDataset
+- File handle caching (`_file_handles`) avoids repeated HDF5 open/close
+- `max_episodes` parameter for quick overfitting tests
+- Column pre-caching for small columns (action, proprio, state)
+- Sampled normalizer: use `load_episode` for a few episodes instead of full `get_col_data` scan
+
+### Multi-domain Training
+- `MultiDomainDataset` wraps multiple HDF5Dataset instances
+- Action zero-padding to max dimension (Cube=25D for cross-dataset)
+- Returns only `pixels` + `action` keys to avoid DataLoader collation errors
+
+## Known Issues & Limitations
+
+1. **Planner tanh saturation**: DO NOT use tanh on action output. Use clamp + L2 penalty instead
+2. **PushT simulation mismatch**: agent position diverges ~90px from dataset after 5 steps due to PyMunk physics fidelity. Block position stays accurate
+3. **Cross-model surprise comparison**: TwoRooms model has different embedding scale (surprise 2-7 vs 0.02-0.45). Only compare across datasets for the SAME model
+4. **Cube action dimension**: 25D (5×5), all others 10D. Requires zero-padding for cross-dataset training
+5. **HDF5 not fork-safe**: use `num_workers=0` for LIBERO datasets, disable `persistent_workers` and `prefetch_factor` when `num_workers=0`
+6. **RTX 3050 6GB**: batch≤8 at 224×224, batch≤4 at 128×128 with bf16
+
+## Experiment Results Summary
+
+See `output/CONCLUSIONS.md` for full details. Key findings:
+
+1. **Cross-dataset surprise**: Pusht model best visual generalization. Reacher dataset most complex
+2. **LIBERO-50 convergence**: lr=2e-5 + SIGReg λ=0.05 + grad_clip=0.5 → smooth convergence, no spikes
+3. **GT rollout error**: 1.33× gap between WM teacher-forcing and autoregressive rollout (expected)
+4. **Planner T=1**: cost 0.03 < GT 0.07 (planner finds better actions)
+5. **Planner T=5**: cost 1.32 < GT 1.46 with smooth actions
+6. **Action contribution**: TwoRooms Δ=1.23 (action-critical), Pusht Δ=0.07 (vision-dominant)
