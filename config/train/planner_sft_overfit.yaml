@@ -1,0 +1,16 @@
+# Planner SFT overfit — inherits from planner_sft.yaml
+defaults:
+  - planner_sft
+
+train_split: 1.0
+
+trainer:
+  max_epochs: 100
+
+loader:
+  batch_size: 1
+
+planner:
+  max_episodes: 1
+  max_samples: 1
+  conf_weight: 0.5

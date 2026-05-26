@@ -1,0 +1,18 @@
+# Planner SFT (action imitation) config — inherits from planner_train.yaml
+defaults:
+  - planner_train
+
+trainer:
+  max_epochs: 10
+
+loader:
+  batch_size: 16
+
+optimizer:
+  lr: 1e-3
+
+planner:
+  stage: sft
+  num_queries: 20
+  diversity_weight: 0.1
+  conf_weight: 0.5

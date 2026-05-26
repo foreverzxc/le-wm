@@ -48,20 +48,32 @@ cross4: logs/train
 		trainer.gradient_clip_val=0.5 \
 		2>&1 | tee $(LOG_TRAIN)_cross4.log
 
-# ── Planner (train on frozen WM) ─────────────────────────────────────
-.PHONY: planner
-planner: logs/train
+# ── Planner SFT (action imitation) ────────────────────────────────────
+.PHONY: planner-sft
+planner-sft: logs/train
+	PYTHONUNBUFFERED=1 $(VENV) train_planner.py --config-name=planner_sft \
+		2>&1 | tee $(LOG_TRAIN)_planner_sft.log
+
+# ── Planner SFT overfit (1 sample) ─────────────────────────────────────
+.PHONY: planner-sft-overfit
+planner-sft-overfit: logs/train
+	PYTHONUNBUFFERED=1 $(VENV) train_planner.py --config-name=planner_sft_overfit \
+		2>&1 | tee $(LOG_TRAIN)_planner_sft_overfit.log
+
+# ── Planner FT (WM rollout, from SFT checkpoint) ───────────────────────
+.PHONY: planner-ft
+planner-ft: logs/train
 	PYTHONUNBUFFERED=1 $(VENV) train_planner.py \
-		data=pusht img_size=224 \
 		trainer.max_epochs=30 \
-		loader.batch_size=4 loader.num_workers=0 \
-		loader.prefetch_factor=null loader.persistent_workers=false \
+		loader.batch_size=4 \
 		optimizer.lr=1e-4 \
-		planner.ckpt=pusht \
-		planner.horizon=5 planner.num_queries=8 \
-		planner.num_layers=3 \
-		planner.diversity_weight=0.1 \
-		2>&1 | tee $(LOG_TRAIN)_planner.log
+		2>&1 | tee $(LOG_TRAIN)_planner_ft.log
+
+# ── Planner FT overfit (1 sample) ──────────────────────────────────────
+.PHONY: planner-ft-overfit
+planner-ft-overfit: logs/train
+	PYTHONUNBUFFERED=1 $(VENV) train_planner.py --config-name=planner_ft_overfit \
+		2>&1 | tee $(LOG_TRAIN)_planner_ft_overfit.log
 
 # ── PushT (benchmark) ─────────────────────────────────────────────────
 .PHONY: pusht
@@ -123,33 +135,24 @@ batch-surprise: logs/infer
 	PYTHONUNBUFFERED=1 $(VENV) scripts/batch_surprise.py \
 		2>&1 | tee $(LOG_INFER)_batch_surprise.log
 
-# ── Overfit visualization ─────────────────────────────────────────────
-.PHONY: viz-overfit
-viz-overfit: logs/infer
-	PYTHONUNBUFFERED=1 $(VENV) scripts/viz_overfit.py \
-		2>&1 | tee $(LOG_INFER)_viz_overfit.log
-
-# ── Planner visualisation ─────────────────────────────────────────────
-.PHONY: viz-planner
-viz-planner:
-	PYTHONUNBUFFERED=1 $(VENV) scripts/viz_planner_actions.py
-
-# ── Planner experiments ───────────────────────────────────────────────
-.PHONY: planner-t1 planner-t5 planner-sim gt-error
-
-planner-t1: logs/infer
-	PYTHONUNBUFFERED=1 $(VENV) scripts/planner_overfit_t1.py \
-		2>&1 | tee $(LOG_INFER)_planner_t1.log
-
-planner-t5: logs/infer
-	PYTHONUNBUFFERED=1 $(VENV) scripts/planner_overfit_t5.py \
-		2>&1 | tee $(LOG_INFER)_planner_t5.log
-
-planner-sim:
-	PYTHONUNBUFFERED=1 $(VENV) scripts/sim_planner_action.py
-
+# ── GT rollout error analysis ────────────────────────────────────────
+.PHONY: gt-error
 gt-error:
 	PYTHONUNBUFFERED=1 $(VENV) scripts/gt_rollout_error.py
+
+# ── GT sim vs dataset pixel comparison ────────────────────────────────
+.PHONY: gt-sim-pixels
+gt-sim-pixels:
+	PYTHONUNBUFFERED=1 $(VENV) scripts/compare_gt_sim_pixels.py
+
+# ── Planner visualization ──────────────────────────────────────────────
+CKPT ?= $$HOME/.stable_worldmodel/checkpoints/planner_sft_pusht_epoch1.ckpt
+EPISODE ?= 0
+SAMPLE ?= 0
+.PHONY: viz
+viz:
+	PYTHONUNBUFFERED=1 $(VENV) scripts/viz_result.py \
+		--ckpt $(CKPT) --sample $(SAMPLE) --episode $(EPISODE)
 
 # ── Evaluation (MPC planning) ─────────────────────────────────────────
 .PHONY: eval-pusht eval-cube eval-reacher eval-tworoom
@@ -202,20 +205,20 @@ help:
 	@echo "    make overfit        Overfit on 1 LIBERO episode"
 	@echo "    make libero-small   50 episodes, convergence test"
 	@echo "    make libero-10      Full LIBERO-10 (500 episodes)"
-	@echo "    make planner        Train planner on frozen PushT WM"
+	@echo "    make planner-sft    SFT: action imitation (no WM rollout)"
+	@echo "    make planner-ft     FT: WM rollout + best-of-N (from SFT ckpt)"
+	@echo "    make planner-sft-overfit / planner-ft-overfit  Overfit variants"
 	@echo "    make pusht          PushT benchmark (1 epoch timing)"
 	@echo "    make pusht-full     PushT full training (50 epochs)"
 	@echo "    make tworoom        TwoRooms benchmark"
 	@echo "    make dmc            DMC / Reacher benchmark"
 	@echo ""
 	@echo "  Inference & Eval:"
-	@echo "    make batch-surprise                 4×4 cross-dataset surprise"
-	@echo "    make planner-t1 / planner-t5         Planner overfit experiments"
-	@echo "    make planner-sim                     Simulate planner action in env"
-	@echo "    make gt-error                        GT rollout error analysis"
+	@echo "    make gt-sim-pixels                   GT sim vs dataset pixel comparison"
+	@echo "    make viz CKPT=... SAMPLE=0            Planner action visualization"
 	@echo "    make surprise DATASET=libero EP=0    Surprise along trajectory"
 	@echo "    make batch-surprise                  4×4 cross-dataset surprise"
-	@echo "    make viz-overfit / viz-planner       Visualizations"
+	@echo "    make gt-error                        GT rollout error analysis"
 	@echo ""
 	@echo "  Utilities:"
 	@echo "    make list-logs      Show all experiment logs"

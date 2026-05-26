@@ -66,7 +66,7 @@ planner:
   num_layers: 3                  # transformer decoder layers
   num_heads: 8                   # attention heads
   mlp_dim: 1024                  # FFN hidden dim
-  horizon: 8                     # output series length T (action₁, ..., action_T)
+  horizon: 1                     # coarse planning steps (must be ≤ num_steps - history_size)
   action_dim: null               # raw action dim (null = auto-detect from WM)
   action_range: 1.0              # max action magnitude (tanh scaled)
   dropout: 0.1

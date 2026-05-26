@@ -27,20 +27,11 @@ le-wm/
 │   ├── lewm.yaml                  # Main config (WM + Planner params)
 │   ├── model/lewm.yaml            # JEPA model definition
 │   └── data/*.yaml                # Per-dataset configs
-├── scripts/                       # Experiment & visualization scripts
-│   ├── train_and_compare.py       # Train planner + 3-way comparison GIF
-│   ├── planner_overfit_t1.py      # T=1 planner overfit
-│   ├── planner_overfit_t5.py      # T=5 planner overfit
-│   ├── compare_actions.py         # Planner vs GT action GIF comparison
-│   ├── sim_planner_action.py      # Planner action simulation in PushT env
-│   ├── gt_rollout_error.py        # WM pred_loss vs rollout cost analysis
-│   ├── gt_sim_vs_dataset.py       # GT sim vs dataset pixels GIF
-│   ├── surprise.py                # Single trajectory surprise
-│   ├── batch_surprise.py          # Cross-dataset surprise matrix
-│   ├── viz_overfit.py             # WM embedding visualization
-│   ├── viz_planner_actions.py     # Planner action space visualization
-│   ├── debug_state_match.py       # Debug: state matching accuracy
-│   └── debug_block_position.py    # Debug: block position tracking
+├── scripts/                       # Analysis & visualization scripts
+│   ├── compare_gt_sim_pixels.py    # GT sim vs dataset pixel comparison (standard)
+│   ├── surprise.py                 # Single trajectory surprise
+│   ├── batch_surprise.py           # Cross-dataset surprise matrix
+│   └── gt_rollout_error.py         # WM pred_loss vs rollout cost analysis
 └── output/
     ├── CONCLUSIONS.md             # Verified experimental findings
     ├── viz/                       # All generated visualizations
@@ -66,18 +57,20 @@ le-wm/
 
 ### Planner Architecture
 - **Perceiver-style decoder**: N learned queries, self-attention + cross-attention to [goal_emb, ctx_emb]
+- **Full history context**: planner sees all HS frames of ctx_emb, not just the last frame
 - **Best-of-N loss**: only the query with lowest rollout cost gets gradient
 - **DETR-style diversity**: cosine similarity penalty pushes non-best queries away from best
-- **Action constraint**: clamp(actions, -1, 1) + L2 smoothness penalty (weight ~2.0). DO NOT use tanh — gradient dies at saturation
-- **Small init**: scale action_head output weights by 0.1, zero bias
-- **Real action history**: pass dataset actions as `hist_actions` to rollout, NOT zeros
+- **Action constraint**: `(2*sigmoid(x)-1) * action_range` — smooth normalization to [-range, range]
+- **Individual sub-actions**: planner outputs `horizon * action_substeps * action_dim` scalars, reshaped to `(horizon, action_substeps, action_dim)`. Each substep is a unique action (no repeat_interleave)
+- **Real action history**: pass dataset actions as `hist_actions` to rollout in `fs*raw_dim` form, NOT averaged
 - **Explicit goal**: pass `goal_emb` to `planner_rollout`, NOT derived from context
+- **Horizon guard**: train_planner.py raises ValueError if `horizon > num_steps - history_size`
 
 ### Planner Rollout Gradient Flow
 - WM params have `requires_grad=False` — never updated
 - Context encoding uses `torch.no_grad()` — saves memory
 - **Rollout loop does NOT use no_grad** — gradient flows through action_encoder → predictor → pred_embs → loss → actions → planner
-- This is CORRECT: gradient flows TO planner but NOT to WM
+- **hist_act alignment**: t=0 replaces only `hist_act[:, -1:]` with P[0] (keeps A[0],A[1] aligned with f0,f1). t≥1 does shift+append synchronised with emb truncation
 
 ### WM Training Hyperparameters
 - lr=2e-5 (5e-5 causes gradient spikes on multi-task data)
@@ -105,8 +98,8 @@ le-wm/
 
 ## Known Issues & Limitations
 
-1. **Planner tanh saturation**: DO NOT use tanh on action output. Use clamp + L2 penalty instead
-2. **PushT simulation mismatch**: agent position diverges ~90px from dataset after 5 steps due to PyMunk physics fidelity. Block position stays accurate
+1. **Planner action_head init**: action_head output layer not yet using small-init (scale 0.1 + zero bias). May cause sigmoid saturation early in training
+2. **PushT simulation irreproducibility**: same state + actions produce divergent agent trajectories in PyMunk. Verify with `compare_gt_sim_pixels.py`
 3. **Cross-model surprise comparison**: TwoRooms model has different embedding scale (surprise 2-7 vs 0.02-0.45). Only compare across datasets for the SAME model
 4. **Cube action dimension**: 25D (5×5), all others 10D. Requires zero-padding for cross-dataset training
 5. **HDF5 not fork-safe**: use `num_workers=0` for LIBERO datasets, disable `persistent_workers` and `prefetch_factor` when `num_workers=0`
@@ -114,11 +107,6 @@ le-wm/
 
 ## Experiment Results Summary
 
-See `output/CONCLUSIONS.md` for full details. Key findings:
+**NOTE: Previous conclusions (planner > GT, etc.) are unverified pending re-evaluation with the fixes in this commit.**
 
-1. **Cross-dataset surprise**: Pusht model best visual generalization. Reacher dataset most complex
-2. **LIBERO-50 convergence**: lr=2e-5 + SIGReg λ=0.05 + grad_clip=0.5 → smooth convergence, no spikes
-3. **GT rollout error**: 1.33× gap between WM teacher-forcing and autoregressive rollout (expected)
-4. **Planner T=1**: cost 0.03 < GT 0.07 (planner finds better actions)
-5. **Planner T=5**: cost 1.32 < GT 1.46 with smooth actions
-6. **Action contribution**: TwoRooms Δ=1.23 (action-critical), Pusht Δ=0.07 (vision-dominant)
+See `output/CONCLUSIONS.md` for historical context. All findings need re-validation.

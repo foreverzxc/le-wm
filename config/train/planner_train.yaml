@@ -1,0 +1,19 @@
+# Planner training config — inherits from lewm.yaml
+defaults:
+  - lewm
+
+# HDF5-safe loader (must use num_workers=0)
+loader:
+  num_workers: 0
+  persistent_workers: false
+  prefetch_factor: null
+
+# Override num_steps and disable column caching (planner reads on-demand)
+data:
+  dataset:
+    num_steps: ${eval:'${planner.horizon} + ${wm.history_size}'}
+    keys_to_cache: []
+
+planner:
+  stage: ft                     # "sft" (action imitation) or "ft" (WM rollout)
+  horizon: 5

@@ -1,0 +1,19 @@
+# Planner FT overfit — inherits from planner_train.yaml
+defaults:
+  - planner_train
+
+train_split: 1.0
+
+trainer:
+  max_epochs: 200
+
+loader:
+  batch_size: 1
+
+optimizer:
+  lr: 1e-3
+
+planner:
+  stage: ft
+  max_episodes: 1
+  max_samples: 1
